@@ -1,0 +1,19 @@
+dashboard:
+  get:
+    tags:
+      - Dashboard
+    summary: ダッシュボード情報取得
+    operationId: getDashboard
+    responses:
+      '200':
+        description: "ダッシュボード情報取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/dashboard.yaml#/DashboardResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"

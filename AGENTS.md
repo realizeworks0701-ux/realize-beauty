@@ -44,6 +44,15 @@ MVP外の機能は実装しないでください。
 設計書と実装が矛盾する場合は、設計書を優先する。
 仕様が曖昧な場合は質問する。
 
+# ADR (Architecture Decision Record)
+
+設計判断は必ず docs/decisions に ADR として記録してください。
+
+- 新しい技術・方針を採用した場合は ADR を追加する
+- ADR を追加・更新した場合は /memories/repo/adr-summary.md も更新する
+- AI は adr-summary.md を設計判断の材料として参照する
+- ADR のテンプレートは docs/decisions/TEMPLATE.md を使用する
+
 ---
 
 Roleカラムは将来の権限制御のために予約済みです。

@@ -1,0 +1,133 @@
+PaginationMeta:
+  type: object
+  description: ページネーション情報
+  required:
+  - current_page
+  - last_page
+  - per_page
+  - total
+
+  properties:
+    current_page:
+      type: integer
+      example: 1
+
+    from:
+      type: integer
+      nullable: true
+      example: 1
+
+    last_page:
+      type: integer
+      example: 5
+
+    path:
+      type: string
+      example: http://localhost/api/v1/customers
+
+    per_page:
+      type: integer
+      example: 20
+
+    to:
+      type: integer
+      nullable: true
+      example: 20
+
+    total:
+      type: integer
+      example: 86
+
+########################################################
+
+PaginationLinks:
+  type: object
+
+  properties:
+    first:
+      type: string
+      nullable: true
+
+    last:
+      type: string
+      nullable: true
+
+    prev:
+      type: string
+      nullable: true
+
+    next:
+      type: string
+      nullable: true
+
+########################################################
+
+ValidationError:
+  type: object
+
+  properties:
+
+    message:
+      type: string
+      example: Validation failed.
+
+    errors:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
+
+########################################################
+
+UnauthorizedResponse:
+  type: object
+
+  properties:
+
+    message:
+      type: string
+      example: Unauthenticated.
+
+########################################################
+
+ForbiddenResponse:
+  type: object
+
+  properties:
+
+    message:
+      type: string
+      example: Forbidden.
+
+########################################################
+
+NotFoundResponse:
+  type: object
+
+  properties:
+
+    message:
+      type: string
+      example: Resource not found.
+
+########################################################
+
+RecordStatus:
+  type: string
+  enum:
+    - draft
+    - completed
+  example: completed
+
+########################################################
+
+Role:
+  type: string
+
+  enum:
+    - owner
+    - manager
+    - staff
+
+  example: owner

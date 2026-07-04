@@ -1,0 +1,148 @@
+customers:
+  get:
+    tags:
+      - Customers
+    summary: 顧客一覧取得
+    operationId: listCustomers
+    parameters:
+        - $ref: "../components/parameters.yaml#/Keyword"
+        - $ref: "../components/parameters.yaml#/Page"
+        - $ref: "../components/parameters.yaml#/PerPage"
+        - $ref: "../components/parameters.yaml#/Sort"
+        - $ref: "../components/parameters.yaml#/Gender"
+        - $ref: "../components/parameters.yaml#/VisitedAfter"
+        - $ref: "../components/parameters.yaml#/VisitedBefore"
+    responses:
+      '200':
+        description: "顧客一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/customer.yaml#/CustomerCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+  post:
+    tags:
+      - Customers
+    summary: 顧客登録
+    operationId: createCustomer
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/customer.yaml#/CreateCustomerRequest"
+    responses:
+      '201':
+        description: "顧客登録成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/customer.yaml#/CustomerResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+customer:
+  get:
+    tags:
+      - Customers
+    summary: 顧客詳細取得
+    operationId: getCustomer
+    parameters:
+      - $ref: "../components/parameters.yaml#/CustomerId"
+    responses:
+      '200':
+        description: "顧客詳細取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/customer.yaml#/CustomerResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "顧客が見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+  patch:
+    tags:
+      - Customers
+    summary: 顧客更新
+    operationId: updateCustomer
+    parameters:
+      - $ref: "../components/parameters.yaml#/CustomerId"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/customer.yaml#/UpdateCustomerRequest"
+    responses:
+      '200':
+        description: "顧客更新成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/customer.yaml#/CustomerResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "顧客が見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - Customers
+    summary: 顧客削除
+    operationId: deleteCustomer
+    parameters:
+      - $ref: "../components/parameters.yaml#/CustomerId"
+    responses:
+      '204':
+        description: "顧客削除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "顧客が見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

@@ -2,121 +2,72 @@ openapi: 3.1.0
 
 info:
   title: Realize Beauty API
-  version: 1.0.0
-  description: REST API Specification
+  description: |
+    美容サロン向けCRM「Realize Beauty」のREST API仕様です。
 
+    API First開発を採用し、
+    本ファイルをSingle Source of Truthとします。
+  version: 1.0.0
+  
 servers:
   - url: http://localhost/api/v1
     description: Local Development
 
 tags:
-  - name: Authentication
+  - name: Auth
+    description: 認証
   - name: Dashboard
+    description: ダッシュボード
   - name: Customers
+    description: 顧客管理
   - name: Records
+    description: カルテ管理
   - name: Photos
+    description: 写真管理
+
+security:
+  - bearerAuth: []
 
 paths:
 
   /auth/login:
+    $ref: "./paths/auth.yaml#/login"
 
-    post:
+  /auth/logout:
+    $ref: "./paths/auth.yaml#/logout"
 
-      tags:
-        - Authentication
+  /auth/me:
+    $ref: "./paths/auth.yaml#/me"
 
-      summary: ログイン
+  /dashboard:
+    $ref: "./paths/dashboard.yaml#/dashboard"
 
-      operationId: login
+  /customers:
+    $ref: "./paths/customers.yaml#/customers"
 
-      requestBody:
+  /customers/{customerId}:
+    $ref: "./paths/customers.yaml#/customer"
 
-        required: true
+  /customers/{customerId}/records:
+    $ref: "./paths/records.yaml#/customerRecords"
 
-        content:
+  /records/{recordId}:
+    $ref: "./paths/records.yaml#/record"
 
-          application/json:
+  /records/{recordId}/summarize:
+    $ref: "./paths/records.yaml#/summarize"
 
-            schema:
+  /records/{recordId}/photos:
+    $ref: "./paths/photos.yaml#/upload"
 
-              $ref: '#/components/schemas/LoginRequest'
-
-      responses:
-
-        '200':
-
-          description: Success
-
-          content:
-
-            application/json:
-
-              schema:
-
-                $ref: '#/components/schemas/LoginResponse'
-
-        '401':
-
-          description: Unauthorized
-
-        '422':
-
-          description: Validation Error
+  /photos/{photoId}:
+    $ref: "./paths/photos.yaml#/photo"
 
 components:
 
-  schemas:
+  securitySchemes:
 
-    LoginRequest:
-
-      type: object
-
-      required:
-        - email
-        - password
-
-      properties:
-
-        email:
-          type: string
-          format: email
-
-        password:
-          type: string
-
-    LoginResponse:
-
-      type: object
-
-      properties:
-
-        data:
-
-          type: object
-
-          properties:
-
-            token:
-              type: string
-
-            user:
-
-              $ref: '#/components/schemas/User'
-
-    User:
-
-      type: object
-
-      properties:
-
-        id:
-          type: integer
-
-        name:
-          type: string
-
-        email:
-          type: string
-
-        role:
-          type: string
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

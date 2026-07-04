@@ -1,0 +1,192 @@
+customerRecords:
+  get:
+    tags:
+      - Records
+    summary: カルテ一覧取得
+    operationId: listRecords
+    parameters:
+      - $ref: "../components/parameters.yaml#/CustomerId"
+      - $ref: "../components/parameters.yaml#/Page"
+      - $ref: "../components/parameters.yaml#/PerPage"
+    responses:
+      '200':
+        description: "カルテ一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/RecordCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "顧客が見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+  post:
+    tags:
+      - Records
+    summary: カルテ登録
+    operationId: createRecord
+    parameters:
+      - $ref: "../components/parameters.yaml#/CustomerId"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/record.yaml#/CreateRecordRequest"
+    responses:
+      '201':
+        description: "カルテ登録成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/RecordResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+record:
+  get:
+    tags:
+      - Records
+    summary: カルテ詳細取得
+    operationId: getRecord
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordId"
+    responses:
+      '200':
+        description: "カルテ詳細取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/RecordResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+  patch:
+    tags:
+      - Records
+    summary: カルテ更新
+    operationId: updateRecord
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordId"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/record.yaml#/UpdateRecordRequest"
+    responses:
+      '200':
+        description: "カルテ更新成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/RecordResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - Records
+    summary: カルテ削除
+    description: Soft Delete。owner・managerのみ実行可能。
+    operationId: deleteRecord
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordId"
+    responses:
+      '204':
+        description: "カルテ削除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "権限エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+summarize:
+  post:
+    tags:
+      - Records
+    summary: AIカルテ要約
+    operationId: summarizeRecord
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordId"
+    responses:
+      '200':
+        description: "AIカルテ要約成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/AiSummaryResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

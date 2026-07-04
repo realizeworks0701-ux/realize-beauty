@@ -1,0 +1,34 @@
+Success:
+  description: Success
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          data:
+            type: object
+
+ValidationError:
+  description: Validation Error
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
+            example: Validation failed.
+          errors:
+            type: object
+
+Unauthorized:
+  description: Unauthorized
+
+Forbidden:
+  description: Forbidden
+
+NotFound:
+  description: Resource Not Found
+
+ServerError:
+  description: Internal Server Error

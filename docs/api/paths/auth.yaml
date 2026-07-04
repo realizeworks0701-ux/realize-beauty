@@ -1,0 +1,68 @@
+login:
+  post:
+    tags:
+      - Auth
+    summary: ログイン
+    operationId: login
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/auth.yaml#/LoginRequest"
+    responses:
+      '200':
+        description: "ログイン成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/auth.yaml#/LoginResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+logout:
+  post:
+    tags:
+      - Auth
+    summary: ログアウト
+    operationId: logout
+    responses:
+      '204':
+        description: "ログアウト成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+me:
+  get:
+    tags:
+      - Auth
+    summary: ログイン中ユーザー取得
+    operationId: me
+    responses:
+      '200':
+        description: "ログイン中ユーザー取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/auth.yaml#/MeResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"

@@ -1,0 +1,71 @@
+CustomerId:
+  name: customerId
+  in: path
+  required: true
+  schema:
+    type: integer
+
+RecordId:
+  name: recordId
+  in: path
+  required: true
+  schema:
+    type: integer
+
+PhotoId:
+  name: photoId
+  in: path
+  required: true
+  schema:
+    type: integer
+
+Keyword:
+  name: keyword
+  in: query
+  schema:
+    type: string
+
+Page:
+  name: page
+  in: query
+  schema:
+    type: integer
+    default: 1
+
+PerPage:
+  name: per_page
+  in: query
+  schema:
+    type: integer
+    default: 20
+
+Sort:
+  name: sort
+  in: query
+  schema:
+    type: string
+
+Gender:
+  name: gender
+  in: query
+  schema:
+    type: integer
+    enum:
+      - 0
+      - 1
+      - 2
+      - 9
+
+VisitedAfter:
+  name: visited_after
+  in: query
+  schema:
+    type: string
+    format: date
+
+VisitedBefore:
+  name: visited_before
+  in: query
+  schema:
+    type: string
+    format: date

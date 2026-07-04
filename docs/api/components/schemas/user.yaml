@@ -1,0 +1,17 @@
+UserSummary:
+  type: object
+  description: スタッフ情報（参照用）
+
+  required:
+    - id
+    - name
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    name:
+      type: string
+      example: 田中 美咲

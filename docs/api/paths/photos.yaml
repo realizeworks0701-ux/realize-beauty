@@ -1,0 +1,63 @@
+upload:
+  post:
+    tags:
+      - Photos
+    summary: 写真アップロード
+    operationId: uploadPhoto
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordId"
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            - $ref: "../components/schemas/photo.yaml#/UploadPhotoRequest"
+    responses:
+      '201':
+        description: "写真アップロード成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/photo.yaml#/PhotoResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+photo:
+  delete:
+    tags:
+      - Photos
+    summary: 写真削除
+    operationId: deletePhoto
+    parameters:
+      - $ref: "../components/parameters.yaml#/PhotoId"
+    responses:
+      '204':
+        description: "写真削除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

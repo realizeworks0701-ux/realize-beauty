@@ -1,0 +1,106 @@
+LoginRequest:
+  type: object
+  description: ログインリクエスト
+
+  required:
+    - email
+    - password
+
+  properties:
+
+    email:
+      type: string
+      format: email
+      example: admin@example.com
+
+    password:
+      type: string
+      format: password
+      example: password
+
+########################################################
+
+LoginResponse:
+  type: object
+  description: ログインレスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - token
+        - user
+
+      properties:
+
+        token:
+          type: string
+          example: "1|xxxxxxxxxxxxxxxx"
+
+        user:
+          type: object
+
+          required:
+            - id
+            - name
+            - role
+
+          properties:
+
+            id:
+              type: integer
+              example: 1
+
+            name:
+              type: string
+              example: 山田 太郎
+
+            role:
+              type: string
+              enum: [owner, manager, staff]
+              example: owner
+
+########################################################
+
+MeResponse:
+  type: object
+  description: ログイン中ユーザーレスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - id
+        - name
+        - email
+        - role
+
+      properties:
+
+        id:
+          type: integer
+          example: 1
+
+        name:
+          type: string
+          example: 山田 太郎
+
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+
+        role:
+          type: string
+          enum: [owner, manager, staff]
+          example: owner

@@ -1,0 +1,51 @@
+DashboardResponse:
+  type: object
+  description: ダッシュボードレスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - today_customers
+        - records_this_month
+        - new_customers
+        - total_customers
+
+      properties:
+
+        today_customers:
+          type: integer
+          description: 本日の来客数
+          example: 8
+
+        new_customers:
+          type: integer
+          description: 新規顧客数（当月）
+          example: 2
+
+        total_customers:
+          type: integer
+          description: 顧客総数
+          example: 152
+
+        records_this_month:
+          type: integer
+          description: 今月のカルテ件数
+          example: 94
+
+        recent_customers:
+          type: array
+          description: 最近の顧客
+          items:
+            $ref: "./customer.yaml#/CustomerSummary"
+
+        recent_records:
+          type: array
+          description: 最近のカルテ
+          items:
+            $ref: "./record.yaml#/RecordSummary"

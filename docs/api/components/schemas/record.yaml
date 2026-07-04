@@ -1,0 +1,258 @@
+RecordBlock:
+  type: object
+  description: カルテ入力ブロック
+
+  required:
+    - label
+    - content
+    - sort_order
+
+  properties:
+
+    id:
+      type: integer
+      nullable: true
+      description: >
+        ブロックID。
+        新規作成時は省略可能。
+        更新時は既存ブロックの識別に利用する。
+      example: 1
+
+    label:
+      type: string
+      maxLength: 100
+      description: 項目名
+      example: 薬剤
+
+    content:
+      type: string
+      description: 入力内容
+      example: イルミナカラー 10Lv
+
+    sort_order:
+      type: integer
+      description: 表示順
+      example: 1
+########################################################
+
+RecordBlockTemplate:
+  type: object
+  description: カルテ項目テンプレート
+
+  required:
+    - id
+    - label
+    - sort_order
+    - is_default
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    label:
+      type: string
+      example: 薬剤
+
+    placeholder:
+      type: string
+      nullable: true
+      example: 使用した薬剤を入力してください
+
+    sort_order:
+      type: integer
+      example: 1
+
+    is_default:
+      type: boolean
+      example: true
+
+########################################################
+
+RecordSummary:
+  type: object
+  description: カルテ一覧情報
+
+  required:
+    - id
+    - customer
+    - user
+    - status
+    - visited_at
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    customer:
+      $ref: "./customer.yaml#/CustomerSummary"
+
+    user:
+      $ref: "./user.yaml#/UserSummary"
+
+    status:
+      $ref: "./common.yaml#/RecordStatus"
+
+    visited_at:
+      type: string
+      format: date-time
+      example: "2026-07-01T10:00:00+09:00"
+
+########################################################
+
+Record:
+  allOf:
+    - $ref: "#/RecordSummary"
+
+    - type: object
+
+      required:
+        - blocks
+        - photos
+        - created_at
+        - updated_at
+
+      properties:
+
+        blocks:
+          type: array
+          items:
+            $ref: "#/RecordBlock"
+
+        photos:
+          type: array
+          items:
+            $ref: "./photo.yaml#/PhotoSummary"
+
+        ai_summary:
+          type: string
+          nullable: true
+          example: >
+            カット・カラーを実施。
+            暖色系カラーを希望。
+            次回来店目安は2ヶ月後。
+
+        created_at:
+          type: string
+          format: date-time
+
+        updated_at:
+          type: string
+          format: date-time
+
+########################################################
+
+RecordResponse:
+  type: object
+  description: カルテ詳細レスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/Record"
+
+########################################################
+
+RecordCollection:
+  type: object
+  description: カルテ一覧レスポンス
+
+  required:
+    - data
+    - links
+    - meta
+
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/RecordSummary"
+
+    links:
+      $ref: "./common.yaml#/PaginationLinks"
+
+    meta:
+      $ref: "./common.yaml#/PaginationMeta"
+
+########################################################
+
+CreateRecordRequest:
+  type: object
+  description: カルテ登録リクエスト
+
+  required:
+    - visited_at
+    - status
+    - blocks
+
+  properties:
+
+    visited_at:
+      type: string
+      format: date-time
+      example: "2026-07-01T10:00:00+09:00"
+
+    status:
+      $ref: "./common.yaml#/RecordStatus"
+
+    blocks:
+      type: array
+
+      items:
+        $ref: "#/RecordBlock"
+
+########################################################
+
+UpdateRecordRequest:
+  type: object
+  description: カルテ更新リクエスト
+
+  properties:
+
+    visited_at:
+      type: string
+      format: date-time
+      example: "2026-07-01T10:00:00+09:00"
+
+    status:
+      $ref: "./common.yaml#/RecordStatus"
+
+    blocks:
+      type: array
+
+      items:
+        $ref: "#/RecordBlock"
+
+########################################################
+
+AiSummaryResponse:
+  type: object
+  description: AIカルテ要約レスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - summary
+
+      properties:
+
+        summary:
+          type: string
+          example: >
+            カット・カラーを実施。
+            暖色系カラーを希望。
+            次回来店目安は2ヶ月後。

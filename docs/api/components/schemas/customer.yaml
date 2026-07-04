@@ -1,0 +1,179 @@
+CustomerSummary:
+  type: object
+  description: 顧客一覧用
+
+  required:
+    - id
+    - name
+    - kana
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    name:
+      type: string
+      maxLength: 100
+      example: 山田 花子
+
+    kana:
+      type: string
+      maxLength: 100
+      example: ヤマダ ハナコ
+
+    phone:
+      type: string
+      nullable: true
+      example: "09012345678"
+
+########################################################
+
+Customer:
+  allOf:
+
+    - $ref: "#/CustomerSummary"
+
+    - type: object
+
+      required:
+        - created_at
+        - updated_at
+
+      properties:
+
+        birthday:
+          type: string
+          format: date
+          nullable: true
+          example: "1995-04-01"
+
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "hanako@example.com"
+
+        memo:
+          type: string
+          nullable: true
+          example: "カラーは暖色系を希望"
+
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-29T10:00:00Z"
+
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-29T10:00:00Z"
+
+########################################################
+
+CustomerResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/Customer"
+
+########################################################
+
+CustomerCollection:
+  type: object
+
+  required:
+    - data
+    - links
+    - meta
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/CustomerSummary"
+
+    links:
+      $ref: "./common.yaml#/PaginationLinks"
+
+    meta:
+      $ref: "./common.yaml#/PaginationMeta"
+
+########################################################
+
+CreateCustomerRequest:
+  type: object
+
+  required:
+    - name
+    - kana
+
+  properties:
+
+    name:
+      type: string
+      maxLength: 100
+      example: 山田 花子
+
+    kana:
+      type: string
+      maxLength: 100
+      example: ヤマダ ハナコ
+
+    birthday:
+      type: string
+      format: date
+      nullable: true
+
+    phone:
+      type: string
+      nullable: true
+
+    email:
+      type: string
+      format: email
+      nullable: true
+
+    memo:
+      type: string
+      nullable: true
+
+########################################################
+
+UpdateCustomerRequest:
+  type: object
+
+  properties:
+
+    name:
+      type: string
+      maxLength: 100
+
+    kana:
+      type: string
+      maxLength: 100
+
+    birthday:
+      type: string
+      format: date
+      nullable: true
+
+    phone:
+      type: string
+      nullable: true
+
+    email:
+      type: string
+      format: email
+      nullable: true
+
+    memo:
+      type: string
+      nullable: true

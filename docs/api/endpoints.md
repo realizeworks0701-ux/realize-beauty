@@ -293,12 +293,19 @@
 
 ### Request
 
-| Field | Type | Required |
-|--------|------|----------|
-| treatment | text | ✓ |
-| memo | text | |
-| visited_at | datetime | ✓ |
-| status | string | |
+| Field | Type | Required | Description |
+|--------|------|----------|-------------|
+| visited_at | datetime | ✓ | 来店日時 |
+| status | string | ✓ | draft / completed |
+| blocks | array | ✓ | カルテブロックの配列 |
+
+#### blocks 要素
+
+| Field | Type | Required | Description |
+|--------|------|----------|-------------|
+| label | string | ✓ | 項目名（例：薬剤、放置時間） |
+| content | string | ✓ | 入力内容 |
+| sort_order | integer | ✓ | 表示順 |
 
 ### Response
 

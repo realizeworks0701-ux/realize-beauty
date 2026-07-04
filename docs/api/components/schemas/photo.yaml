@@ -1,0 +1,63 @@
+PhotoSummary:
+  type: object
+  description: 写真情報（参照用）
+
+  required:
+    - id
+    - url
+    - sort_order
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    url:
+      type: string
+      description: Cloudflare R2の公開URL
+      example: "https://cdn.example.com/photos/abc123.jpg"
+
+    caption:
+      type: string
+      nullable: true
+      example: ビフォー
+
+    sort_order:
+      type: integer
+      example: 1
+
+########################################################
+
+PhotoResponse:
+  type: object
+  description: 写真レスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/PhotoSummary"
+
+########################################################
+
+UploadPhotoRequest:
+  type: object
+  description: 写真アップロードリクエスト
+
+  required:
+    - image
+
+  properties:
+
+    image:
+      type: string
+      format: binary
+      description: アップロードする画像ファイル
+
+    caption:
+      type: string
+      nullable: true
+      example: ビフォー

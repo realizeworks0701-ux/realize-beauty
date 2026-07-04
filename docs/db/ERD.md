@@ -77,25 +77,67 @@ Realize Beautyは美容サロン向け業務支援システムである。
 
 ---
 
-# records
-
-電子カルテ
+## records
 
 | Column | Type | Note |
 |--------|------|------|
 | id | bigint | PK |
 | salon_id | bigint | FK → salons.id |
 | customer_id | bigint | FK → customers.id |
-| user_id | bigint | FK → users.id |
-| visited_at | datetime | 来店日時 |
-| treatment | text | 施術内容 |
-| memo | text | カルテメモ |
+| user_id | bigint | FK → users.id（作成スタッフ） |
 | ai_summary | text | nullable |
 | status | string | draft / completed |
+| visited_at | timestamp | 来店日時 |
 | created_at | timestamp | |
 | updated_at | timestamp | |
-| deleted_at | timestamp | Soft Delete |
+| deleted_at | timestamp | nullable |
 
+---
+
+## record_blocks
+
+カルテを構成する入力ブロック
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK |
+| record_id | bigint | FK → records.id |
+| label | string | 項目名（例：薬剤、放置時間、次回提案） |
+| content | text | 入力内容 |
+| sort_order | integer | 表示順 |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+---
+
+## record_block_templates
+
+店舗ごとのカルテ項目テンプレート
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK |
+| salon_id | bigint | FK → salons.id |
+| label | string | 項目名 |
+| placeholder | string | nullable / 入力例・補足 |
+| sort_order | integer | 表示順 |
+| is_default | boolean | 新規カルテ作成時に初期表示する項目 |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+---
+
+# Relationships
+
+```text
+Salon
+├── Users
+├── Customers
+│   └── Records
+│       ├── RecordBlocks
+│       └── Photos
+└── RecordBlockTemplates
+```
 ---
 
 # photos
@@ -108,6 +150,7 @@ Realize Beautyは美容サロン向け業務支援システムである。
 | record_id | bigint | FK → records.id |
 | path | string | Cloudflare R2保存キー |
 | caption | string | nullable |
+| sort_order | integer | 表示順 |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 | deleted_at | timestamp | Soft Delete |
@@ -249,6 +292,7 @@ Salon
 - hasMany(User)
 - hasMany(Customer)
 - hasMany(Menu)
+- hasMany(RecordBlockTemplate)
 
 User
 
@@ -266,6 +310,7 @@ Record
 - belongsTo(Customer)
 - belongsTo(User)
 - belongsTo(Salon)
+- hasMany(RecordBlock)
 - hasMany(Photo)
 
 Photo
