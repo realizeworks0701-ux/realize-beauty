@@ -41,8 +41,10 @@ export const recordService = {
     await apiClient.delete(`/records/${id}`)
   },
 
-  async summarize(id: number): Promise<TreatmentRecord> {
-    const { data } = await apiClient.post<ApiEnvelope<TreatmentRecord>>(`/records/${id}/summarize`)
-    return data.data
+  async summarize(id: number): Promise<string> {
+    const { data } = await apiClient.post<ApiEnvelope<{ summary: string }>>(
+      `/records/${id}/summarize`,
+    )
+    return data.data.summary
   },
 }

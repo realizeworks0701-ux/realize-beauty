@@ -91,8 +91,8 @@ async function generateSummary(): Promise<void> {
   if (!record.value) return
   summarizing.value = true
   try {
-    const updated = await recordService.summarize(record.value.id)
-    record.value = { ...record.value, ...updated }
+    const summary = await recordService.summarize(record.value.id)
+    record.value = { ...record.value, ai_summary: summary }
     toast.add({ severity: 'success', summary: 'AI要約を生成しました', life: 3000 })
   } catch (error) {
     toast.add({

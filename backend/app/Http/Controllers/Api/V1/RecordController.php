@@ -70,4 +70,18 @@ class RecordController extends Controller
 
         return response()->noContent();
     }
+
+    public function summarize(Request $request, int $recordId): JsonResponse
+    {
+        $record = $this->recordService->summarize(
+            $request->user()->salon_id,
+            $recordId,
+        );
+
+        return response()->json([
+            'data' => [
+                'summary' => $record->ai_summary,
+            ],
+        ]);
+    }
 }
