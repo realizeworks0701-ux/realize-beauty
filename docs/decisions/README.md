@@ -13,12 +13,15 @@
 
 命名規則
 
-0001-postgresql.md
+`ADR-<3桁連番>-<kebab-case-title>.md`
 
-0002-sanctum.md
+例
 
-0003-primevue.md
+- ADR-001-api-first.md
+- ADR-002-multi-tenant.md
+- ADR-004-postgresql.md
+- ADR-005-cloudflare-r2.md
 
-0004-cloudflare-r2.md
+連番はゼロ埋め3桁とし、既存の最大番号+1を採番する。
 
-0005-openai.md
+テンプレートは TEMPLATE.md を使用する。
