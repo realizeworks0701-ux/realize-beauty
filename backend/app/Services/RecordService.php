@@ -3,15 +3,18 @@
 namespace App\Services;
 
 use App\Models\Record;
+use App\Models\RecordBlock;
 use App\Repositories\CustomerRepository;
 use App\Repositories\RecordRepository;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\ValidationException;
 
 class RecordService
 {
     public function __construct(
         private readonly RecordRepository $recordRepository,
         private readonly CustomerRepository $customerRepository,
+        private readonly OpenAIService $openAIService,
     ) {}
 
     public function list(int $salonId, int $customerId, array $filters): LengthAwarePaginator
@@ -44,5 +47,28 @@ class RecordService
     {
         $record = $this->recordRepository->findOrFail($salonId, $id);
         $this->recordRepository->delete($record);
+    }
+
+    /**
+     * カルテのテキストブロックをAIで要約し、ai_summary へ保存する。
+     */
+    public function summarize(int $salonId, int $id): Record
+    {
+        $record = $this->recordRepository->findOrFail($salonId, $id);
+
+        $content = $record->blocks
+            ->filter(fn (RecordBlock $block): bool => trim((string) $block->content) !== '')
+            ->map(fn (RecordBlock $block): string => "{$block->label}: {$block->content}")
+            ->implode("\n");
+
+        if ($content === '') {
+            throw ValidationException::withMessages([
+                'blocks' => ['要約対象のカルテ本文がありません。'],
+            ]);
+        }
+
+        $summary = $this->openAIService->summarizeRecord($content);
+
+        return $this->recordRepository->updateAiSummary($record, $summary);
     }
 }
