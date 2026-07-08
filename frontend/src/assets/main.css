@@ -1,0 +1,198 @@
+/*
+ * Realize Beauty — Design Tokens & Base Styles
+ * 白×くすみピンク×ベージュ / Glassmorphism
+ * docs/ui/design-system.md 参照
+ */
+
+:root {
+  /* Colors */
+  --rb-pink: #d86c8a;
+  --rb-pink-strong: #c25373;
+  --rb-pink-deep: #a2415d;
+  --rb-pink-soft: #f6c9d6;
+  --rb-pink-tint: #fbe4eb;
+  --rb-pink-faint: #fdf2f5;
+  --rb-beige: #e9dac8;
+  --rb-beige-soft: #f3e9dd;
+  --rb-beige-deep: #d9c3aa;
+  --rb-bg: #fdf9f6;
+  --rb-border: #f0e4e8;
+  --rb-text: #4b4247;
+  --rb-text-muted: #9a8d91;
+
+  /* Gradients */
+  --rb-gradient-rose: linear-gradient(135deg, #f7c8d3 0%, #d86c8a 100%);
+  --rb-gradient-peach: linear-gradient(135deg, #f5dcc8 0%, #dba37e 100%);
+  --rb-gradient-mauve: linear-gradient(135deg, #efd9e4 0%, #b98aa6 100%);
+  --rb-gradient-cream: linear-gradient(135deg, #f6ebd4 0%, #cba96d 100%);
+  --rb-gradient-brand: linear-gradient(135deg, #e48aa3 0%, #d86c8a 55%, #c25373 100%);
+
+  /* Glass */
+  --rb-glass-bg: rgba(255, 255, 255, 0.72);
+  --rb-glass-border: rgba(255, 255, 255, 0.65);
+  --rb-glass-blur: blur(18px);
+
+  /* Shadow */
+  --rb-shadow-soft: 0 8px 32px rgba(216, 108, 138, 0.1);
+  --rb-shadow-hover: 0 12px 40px rgba(216, 108, 138, 0.18);
+
+  /* Radius */
+  --rb-radius-lg: 20px;
+  --rb-radius-md: 14px;
+  --rb-radius-sm: 12px;
+
+  /* Fonts */
+  --rb-font: 'Noto Sans JP', sans-serif;
+  --rb-font-display: 'Zen Maru Gothic', 'Noto Sans JP', sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  font-family: var(--rb-font);
+  color: var(--rb-text);
+  background-color: var(--rb-bg);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 12% 0%, rgba(246, 201, 214, 0.55), transparent 65%),
+    radial-gradient(ellipse 55% 45% at 95% 12%, rgba(243, 233, 221, 0.9), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 80% 95%, rgba(251, 228, 235, 0.6), transparent 65%),
+    radial-gradient(ellipse 45% 40% at 5% 90%, rgba(233, 218, 200, 0.5), transparent 65%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--rb-font-display);
+  font-weight: 700;
+  color: var(--rb-text);
+}
+
+/* ---------- Utilities ---------- */
+
+.glass-card {
+  background: var(--rb-glass-bg);
+  backdrop-filter: var(--rb-glass-blur);
+  -webkit-backdrop-filter: var(--rb-glass-blur);
+  border: 1px solid var(--rb-glass-border);
+  border-radius: var(--rb-radius-lg);
+  box-shadow: var(--rb-shadow-soft);
+}
+
+.rb-gradient-rose {
+  background: var(--rb-gradient-rose);
+}
+
+.rb-gradient-peach {
+  background: var(--rb-gradient-peach);
+}
+
+.rb-gradient-mauve {
+  background: var(--rb-gradient-mauve);
+}
+
+.rb-gradient-cream {
+  background: var(--rb-gradient-cream);
+}
+
+.rb-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ---------- Scrollbar ---------- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rb-pink-soft);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--rb-pink);
+}
+
+/* ---------- PrimeVue tweaks ---------- */
+
+.p-component {
+  font-family: var(--rb-font);
+}
+
+.p-button {
+  border-radius: var(--rb-radius-sm);
+}
+
+.p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-link).p-button-primary,
+.p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-link):not([class*='p-button-sec']):not([class*='p-button-dan']):not([class*='p-button-warn']):not([class*='p-button-help']):not([class*='p-button-info']):not([class*='p-button-succ']):not([class*='p-button-contrast']) {
+  background: var(--rb-gradient-brand);
+  border: none;
+  box-shadow: 0 4px 14px rgba(216, 108, 138, 0.35);
+}
+
+.p-button:not(.p-button-outlined):not(.p-button-text):enabled:hover {
+  box-shadow: var(--rb-shadow-hover);
+}
+
+.p-datatable .p-datatable-thead > tr > th {
+  background: transparent;
+  color: var(--rb-text-muted);
+  font-weight: 500;
+  border-color: var(--rb-border);
+}
+
+.p-datatable .p-datatable-tbody > tr {
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.p-datatable .p-datatable-tbody > tr:hover {
+  background: rgba(251, 228, 235, 0.45);
+}
+
+.p-datatable .p-datatable-tbody > tr > td {
+  border-color: var(--rb-border);
+}
+
+.p-paginator {
+  background: transparent;
+}
+
+.p-tabs,
+.p-tablist,
+.p-tablist-tab-list {
+  background: transparent;
+}
+
+.p-toast .p-toast-message {
+  border-radius: var(--rb-radius-md);
+  backdrop-filter: var(--rb-glass-blur);
+}
+
+.p-dialog {
+  border-radius: var(--rb-radius-lg);
+}

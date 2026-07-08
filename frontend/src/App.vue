@@ -1,11 +1,17 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
+import AppLayout from '@/layouts/AppLayout.vue'
+
+const route = useRoute()
+const isPublic = computed(() => route.meta.public === true)
+</script>
 
 <template>
-  <h1>You did it!</h1>
-  <p>
-    Visit <a href="https://vuejs.org/" target="_blank" rel="noopener">vuejs.org</a> to read the
-    documentation
-  </p>
+  <Toast position="top-right" />
+  <ConfirmDialog />
+  <RouterView v-if="isPublic" />
+  <AppLayout v-else />
 </template>
-
-<style scoped></style>
