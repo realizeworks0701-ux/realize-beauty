@@ -39,3 +39,13 @@ Realize Beauty のバックエンドにおいて、顧客管理・カルテ管�
 
 * レイヤー数が増えるため、小規模機能では実装量が増える
 * Repository・Serviceの責務を継続的に意識する必要がある
+
+## Note: 写真ストレージ（2026-07-08 追記）
+
+本 ADR では写真を Laravel Storage の public ディスクへ保存しているが、これは **MVP 段階の暫定措置** である。
+
+最終的なストレージは [ADR-005](ADR-005-cloudflare-r2.md) で決定した **Cloudflare R2 へ移行する**。
+
+* Storage は `Storage` ファサード経由でアクセスし、ディスク差し替えで R2 へ移行できる形を維持する
+* URL やパスをアプリ側にハードコードせず、ディスク設定に依存させる
+* 移行時は `config/filesystems.php` の R2（S3 互換）ディスク追加と `.env` 設定で対応する
