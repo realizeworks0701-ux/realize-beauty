@@ -362,11 +362,11 @@
 
 ---
 
-## POST /records/{record}/ai-summary
+## POST /records/{record}/summarize
 
 ### Purpose
 
-カルテ内容をAIで要約する。
+カルテのテキストブロックをAIで要約し、`records.ai_summary` へ保存する。
 
 ### Access
 
@@ -375,12 +375,24 @@
 | Authentication | Required |
 | Roles | owner, manager, staff |
 
+### Notes
+
+- 要約対象は内容のあるテキストブロックのみ（写真・日付・ステータス・内容が空のブロックは対象外）
+- ボタン押下時のみ生成・保存する（自動生成はしない）
+- 要約はDBに保持し、以降のGETでそのまま返す
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | 要約対象のテキストが無い |
+
 ### Response
 
 ```json
 {
   "data": {
-    "summary": "..."
+    "summary": "前回よりカラーの色味を落ち着かせ..."
   }
 }
 ```
