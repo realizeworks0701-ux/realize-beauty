@@ -236,10 +236,11 @@ export function installMockAdapter(instance: AxiosInstance): void {
       if (!record) return notFound(config)
       record.ai_summary =
         (record.blocks ?? [])
+          .filter((b) => b.content.trim() !== '')
           .map((b) => `${b.label}: ${b.content}`)
           .join('。')
           .slice(0, 120) + '（モックによる要約）'
-      return respond(config, { data: record })
+      return respond(config, { data: { summary: record.ai_summary } })
     }
 
     // ---- Photos ----
