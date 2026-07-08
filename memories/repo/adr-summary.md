@@ -2,7 +2,7 @@
 
 `docs/decisions/` に記録された設計判断（ADR）の要約。AI は本ファイルを設計判断の材料として参照する。ADR を追加・更新したら本ファイルも更新すること（詳細は各 ADR 原本を参照）。
 
-最終更新: 2026-07-08 ／ 対象: ADR-001〜019（すべて Accepted）
+最終更新: 2026-07-08 ／ 対象: ADR-001〜020（すべて Accepted）
 
 ## 一覧
 
@@ -27,6 +27,7 @@
 | 017 | API Documentation | OpenAPI 3.1 を仕様書に、Redocly を正式ドキュメント、Swagger UI を動作確認用に。編集は OpenAPI のみ、他は生成/参照。配置は `docs/api/`。 |
 | 018 | Flexible Medical Record Structure | カルテは固定カラムでなくラベル付きブロックの集合。`records`（カルテ本体）+ `record_blocks`（入力内容）+ `record_block_templates`（店舗別項目、初期は空）。業種を問わず拡張可能。 |
 | 019 | Customer・Record・Photo API 実装 | 顧客/カルテ/写真 API を Controller→Service→Repository の3層で実装。Resource でレスポンス、FormRequest で検証、カルテブロックは Repository 内で同期、Photo は SoftDelete、認証は Sanctum。 |
+| 020 | Frontend Theme | 白×くすみピンク×ベージュ + Glassmorphism。PrimeVue v4 definePreset + CSS変数 `--rb-*`（main.css）に集約。共通コンポーネント（GlassCard/KpiCard等）で構成。写真はInstagram風グリッド。開発用モックは `npm run dev:mock`。 |
 
 ## 横断テーマ
 
