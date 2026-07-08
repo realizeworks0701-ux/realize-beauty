@@ -24,7 +24,7 @@ class CustomerController extends Controller
             $request->only(['keyword', 'gender', 'visited_after', 'visited_before', 'per_page', 'sort']),
         );
 
-        return CustomerResource::collection($customers)->response()->getData(true);
+        return response()->json(CustomerResource::collection($customers)->response()->getData(true));
     }
 
     public function store(CreateCustomerRequest $request): JsonResponse
