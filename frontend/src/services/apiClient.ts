@@ -3,8 +3,12 @@ import axios from 'axios'
 export const TOKEN_STORAGE_KEY = 'rb_token'
 export const USER_STORAGE_KEY = 'rb_user'
 
+// 開発は Vite プロキシ経由の相対パス、本番は API の絶対URLを注入する。
+// 例: VITE_API_BASE_URL=https://api.example.com/api/v1
+const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+
 export const apiClient = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   headers: {
     Accept: 'application/json',
   },
