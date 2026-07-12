@@ -20,7 +20,7 @@
 | 010 | Git Workflow | GitHub Flow。ブランチ: feature/fix/docs/refactor/chore。コミット: feat/fix/docs/refactor/test/chore。main へ直接 Push 禁止、PR 必須。 |
 | 011 | Frontend Architecture | Vue 3 + TypeScript + PrimeVue + Vue Router + Pinia の SPA。責務分離、Feature First 構成。 |
 | 012 | Testing Strategy | Backend: Pest/PHPUnit、Frontend: Vitest、E2E: Playwright（将来）。優先度 Service→Repository→API→UI。 |
-| 013 | CI/CD | GitHub Actions。CI で Lint/Format/PHPUnit/Pest/Vitest。CD は将来 Laravel Cloud/VPS へ自動デプロイ。 |
+| 013 | CI/CD | GitHub Actions（`.github/workflows/ci.yml` 実装済み）。backend: Pint + `php artisan test`（PostgreSQLサービス）／frontend: type-check + lint + Vitest + build。テストランナーは PHPUnit（Pestは未導入）。CD は将来。 |
 | 014 | AI Development Guidelines | AI は AGENTS.md と ADR を参照して実装。推測実装しない。設計変更はドキュメント先行。AI のコードもレビュー対象。TODO には理由を書く。 |
 | 015 | Coding Standards | 命名: Class=PascalCase / Method・Variable=camelCase / Table・Column=snake_case。原則 SRP/DRY/KISS/YAGNI。整形は Pint（BE）/ESLint+Prettier（FE）。 |
 | 016 | OpenAPI First | すべての REST API は実装より先に OpenAPI へ定義。Laravel 実装は OpenAPI に従う（006 を開発フローとして具体化）。 |

@@ -24,8 +24,8 @@ class RecordResource extends JsonResource
             'status' => $this->status->value,
             'visited_at' => $this->visited_at->toIso8601String(),
             'ai_summary' => $this->ai_summary,
-            'blocks' => $this->whenLoaded('blocks', fn() => RecordBlockResource::collection($this->blocks)),
-            'photos' => $this->whenLoaded('photos', fn() => PhotoResource::collection($this->photos)),
+            'blocks' => $this->whenLoaded('blocks', fn () => RecordBlockResource::collection($this->blocks)),
+            'photos' => $this->whenLoaded('photos', fn () => PhotoResource::collection($this->photos)),
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),
         ];
