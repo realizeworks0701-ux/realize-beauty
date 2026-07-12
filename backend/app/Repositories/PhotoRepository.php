@@ -25,7 +25,7 @@ class PhotoRepository
 
     public function findOrFail(int $recordSalonId, int $photoId): Photo
     {
-        return Photo::whereHas('record', fn($q) => $q->where('salon_id', $recordSalonId))
+        return Photo::whereHas('record', fn ($q) => $q->where('salon_id', $recordSalonId))
             ->findOrFail($photoId);
     }
 

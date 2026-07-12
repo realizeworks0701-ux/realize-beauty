@@ -55,7 +55,7 @@ class RecordRepository
             $record->update(array_filter([
                 'visited_at' => $data['visited_at'] ?? null,
                 'status' => $data['status'] ?? null,
-            ], fn($value) => $value !== null));
+            ], fn ($value) => $value !== null));
 
             if (isset($data['blocks'])) {
                 $this->syncBlocks($record, $data['blocks']);

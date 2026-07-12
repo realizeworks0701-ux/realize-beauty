@@ -12,7 +12,7 @@ class CustomerRepository
         $query = Customer::where('salon_id', $salonId);
 
         if (! empty($filters['keyword'])) {
-            $keyword = '%' . $filters['keyword'] . '%';
+            $keyword = '%'.$filters['keyword'].'%';
 
             $query->where(function ($q) use ($keyword) {
                 $q->where('name', 'like', $keyword)
