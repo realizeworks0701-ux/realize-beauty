@@ -32,13 +32,19 @@ npm install
 
 ## Development
 
-バックエンド（Laravel, `php artisan serve` で localhost:8000）と併用する場合:
+バックエンド（Laravel）と併用する場合:
 
 ```sh
 npm run dev
 ```
 
-`/api` と `/storage` は Vite の proxy 経由で localhost:8000 へ転送される。
+`/api` と `/storage` は Vite の proxy 経由でバックエンドへ転送される。
+既定の転送先は **Laravel Sail（http://localhost、ポート80）**。
+`composer dev`（`php artisan serve`）を使う場合は転送先を上書きする:
+
+```sh
+VITE_API_PROXY_TARGET=http://localhost:8000 npm run dev
+```
 
 バックエンド無しでUIを確認する場合（開発用モックデータ）:
 
