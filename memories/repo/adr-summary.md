@@ -2,7 +2,7 @@
 
 `docs/decisions/` に記録された設計判断（ADR）の要約。AI は本ファイルを設計判断の材料として参照する。ADR を追加・更新したら本ファイルも更新すること（詳細は各 ADR 原本を参照）。
 
-最終更新: 2026-07-08 ／ 対象: ADR-001〜021（すべて Accepted）
+最終更新: 2026-07-13 ／ 対象: ADR-001〜022（すべて Accepted）
 
 ## 一覧
 
@@ -29,6 +29,7 @@
 | 019 | Customer・Record・Photo API 実装 | 顧客/カルテ/写真 API を Controller→Service→Repository の3層で実装。Resource でレスポンス、FormRequest で検証、カルテブロックは Repository 内で同期、Photo は SoftDelete、認証は Sanctum。 |
 | 020 | Frontend Theme | 白×くすみピンク×ベージュ + Glassmorphism。PrimeVue v4 definePreset + CSS変数 `--rb-*`（main.css）に集約。共通コンポーネント（GlassCard/KpiCard等）で構成。写真はInstagram風グリッド。開発用モックは `npm run dev:mock`。 |
 | 021 | OpenAI 連携（AI要約） | AI責務を `OpenAIService` に集約（Controller→RecordService→OpenAIService）。Http クライアント使用で追加パッケージなし、`Http::fake()` でテスト。要約対象は内容のあるテキストブロックのみ、ボタン押下時のみ生成し `records.ai_summary` に保存。APIレスポンスキーは `summary`（OpenAPI準拠）、DBカラムは `ai_summary`（ERD準拠）で併存。 |
+| 022 | デプロイ構成 | フロント=Cloudflare Pages / API=Render(Docker)+Managed PostgreSQL / 写真=R2。フロントは `VITE_API_BASE_URL` でAPI接続先を注入、CORSは `CORS_ALLOWED_ORIGINS`。`render.yaml`・`backend/Dockerfile` 一式。手順は docs/deployment.md。API は MVP 構成（artisan serve）。 |
 
 ## 横断テーマ
 
