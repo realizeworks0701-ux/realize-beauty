@@ -29,8 +29,21 @@ GitHub Actionsを利用する。
 - Lint
 - Format Check
 - PHPUnit
-- Pest
 - Vitest
+
+---
+
+## 実装（2026-07-13 追記）
+
+`.github/workflows/ci.yml` に GitHub Actions を構築。push(main) と全 PR で実行する。
+
+- **backend ジョブ**: PHP 8.3 + PostgreSQL サービス。`composer install` →
+  Pint フォーマットチェック（`pint --test`）→ `php artisan test`
+- **frontend ジョブ**: Node 22。`npm ci` → `type-check` → `lint` →
+  `test:unit`（Vitest）→ `build`
+
+テストランナーは PHPUnit を採用（当初案の Pest は未導入）。既存テストは
+すべて PHPUnit クラス形式。
 
 ---
 
