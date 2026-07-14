@@ -179,6 +179,8 @@ class ReservationService
         Carbon $endAt,
         ?int $excludeId = null,
     ): void {
+        $this->reservationRepository->lockForBooking($salonId, $userId);
+
         $overlapping = $this->reservationRepository->findOverlappingForUpdate(
             $salonId,
             $userId,

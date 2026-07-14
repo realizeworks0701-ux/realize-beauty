@@ -104,7 +104,9 @@ onMounted(() => {
 })
 
 watch(selectedDate, () => {
-  void fetchReservations()
+  // 初期ロード完了前の日付変更は fetchAll をやり直す
+  // （fetchSeq が進んで初回 fetchAll の結果が破棄され、スケルトンのまま固まるため）
+  void (initialized.value ? fetchReservations() : fetchAll())
 })
 
 // ---- 日付移動 ----

@@ -34,9 +34,12 @@ class Reservation extends Model
         return $this->belongsTo(Salon::class);
     }
 
+    /**
+     * 削除済み顧客も含める（顧客削除後も予約履歴の表示を保持するため）。
+     */
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     /**
@@ -47,8 +50,11 @@ class Reservation extends Model
         return $this->belongsTo(Menu::class)->withTrashed();
     }
 
+    /**
+     * 削除済みスタッフも含める（退職後も予約履歴の表示を保持するため）。
+     */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class)->withTrashed();
     }
 }

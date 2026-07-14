@@ -155,8 +155,11 @@ async function move(index: number, delta: -1 | 1): Promise<void> {
   if (!current || !target) return
   reordering.value = true
   try {
-    await menuService.update(current.id, { display_order: target.display_order })
-    await menuService.update(target.id, { display_order: current.display_order })
+    if (current.display_order === target.display_order) {
+      await renumberWithMove(index, delta)
+    } else {
+      await swapOrders(current, target)
+    }
     await fetchMenus()
   } catch (error) {
     toast.add({
@@ -167,6 +170,31 @@ async function move(index: number, delta: -1 | 1): Promise<void> {
     await fetchMenus()
   } finally {
     reordering.value = false
+  }
+}
+
+async function swapOrders(current: Menu, target: Menu): Promise<void> {
+  await menuService.update(current.id, { display_order: target.display_order })
+  try {
+    await menuService.update(target.id, { display_order: current.display_order })
+  } catch (error) {
+    // 2件目が失敗すると display_order が重複したままになるため、1件目を戻す
+    await menuService.update(current.id, { display_order: current.display_order }).catch(() => {})
+    throw error
+  }
+}
+
+// display_order が重複していると値の入れ替えが no-op になるため、
+// 移動後の表示順どおりに全体を振り直して重複を解消する
+async function renumberWithMove(index: number, delta: -1 | 1): Promise<void> {
+  const desired = [...menus.value]
+  const [moved] = desired.splice(index, 1)
+  if (!moved) return
+  desired.splice(index + delta, 0, moved)
+  for (const [order, menu] of desired.entries()) {
+    if (menu.display_order !== order) {
+      await menuService.update(menu.id, { display_order: order })
+    }
   }
 }
 

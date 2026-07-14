@@ -6,9 +6,23 @@ use App\Enums\ReservationStatus;
 use App\Models\Reservation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ReservationRepository
 {
+    /**
+     * 同一サロン・同一スタッフの予約書き込みを直列化する。
+     * 空き時間帯には行ロック対象が存在せず同時INSERTを防げないため、
+     * advisory lock を使う。トランザクション内で呼ぶこと（終了時に自動解放）。
+     */
+    public function lockForBooking(int $salonId, int $userId): void
+    {
+        DB::select(
+            'select pg_advisory_xact_lock(hashtextextended(?, 0))',
+            ["reservation:{$salonId}:{$userId}"],
+        );
+    }
+
     public function listBetween(int $salonId, Carbon $from, Carbon $toExclusive, array $filters): Collection
     {
         return Reservation::where('salon_id', $salonId)

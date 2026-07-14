@@ -432,6 +432,53 @@ class ReservationApiTest extends TestCase
         $this->getJson('/api/v1/reservations')->assertUnauthorized();
     }
 
+    public function test_index_includes_reservations_of_soft_deleted_customer(): void
+    {
+        [$user, $customer, $menu] = $this->createSalonContext();
+        $reservation = $this->reservationAt($user, $customer, $menu, now());
+        $customer->delete();
+
+        $response = $this->getJson('/api/v1/reservations');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $reservation->id);
+        $response->assertJsonPath('data.0.customer.name', $customer->name);
+
+        $this->getJson("/api/v1/reservations/{$reservation->id}")
+            ->assertOk()
+            ->assertJsonPath('data.customer.name', $customer->name);
+    }
+
+    public function test_index_includes_reservations_of_soft_deleted_staff(): void
+    {
+        [$user, $customer, $menu] = $this->createSalonContext();
+        $staff = User::factory()->for($user->salon)->create();
+        $reservation = $this->reservationAt($staff, $customer, $menu, now());
+        $staff->delete();
+
+        $response = $this->getJson('/api/v1/reservations');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.id', $reservation->id);
+        $response->assertJsonPath('data.0.user.name', $staff->name);
+    }
+
+    public function test_store_rejects_start_at_without_timezone_offset(): void
+    {
+        [$user, $customer, $menu] = $this->createSalonContext();
+
+        foreach (['2026-08-10T10:00:00', '2026-08-10 10:00:00', '2026-08-10'] as $startAt) {
+            $this->postJson('/api/v1/reservations', [
+                'customer_id' => $customer->id,
+                'menu_id' => $menu->id,
+                'user_id' => $user->id,
+                'start_at' => $startAt,
+            ])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors(['start_at']);
+        }
+    }
+
     /**
      * 認証済みユーザーと同一サロンの顧客・メニュー（60分）を作成する。
      *
