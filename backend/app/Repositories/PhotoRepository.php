@@ -11,7 +11,7 @@ class PhotoRepository
 {
     public function create(Record $record, UploadedFile $file, ?string $caption): Photo
     {
-        $path = Storage::disk('public')->putFile('photos', $file);
+        $path = Storage::putFile('photos', $file);
 
         $sortOrder = ($record->photos()->max('sort_order') ?? 0) + 1;
 
@@ -31,7 +31,7 @@ class PhotoRepository
 
     public function delete(Photo $photo): void
     {
-        Storage::disk('public')->delete($photo->path);
+        Storage::delete($photo->path);
         $photo->delete();
     }
 }
