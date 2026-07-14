@@ -1,0 +1,165 @@
+reservations:
+  get:
+    tags:
+      - Reservations
+    summary: 予約一覧取得
+    description: >
+      期間内の予約一覧（カレンダー用）。
+      from / to は Asia/Tokyo の日付境界で解釈する。
+      start_at 昇順・ページネーションなし。
+      期間が31日を超える場合は 422。
+    operationId: listReservations
+    parameters:
+      - $ref: "../components/parameters.yaml#/ReservationFrom"
+      - $ref: "../components/parameters.yaml#/ReservationTo"
+      - $ref: "../components/parameters.yaml#/ReservationUserId"
+      - $ref: "../components/parameters.yaml#/ReservationStatusFilter"
+    responses:
+      '200':
+        description: "予約一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/reservation.yaml#/ReservationCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  post:
+    tags:
+      - Reservations
+    summary: 予約登録
+    description: >
+      end_at はリクエストで受け取らず、start_at + menu.duration_minutes からサーバが導出する。
+      同一担当スタッフの reserved / visited の予約と時間帯が重なる場合は 422。
+      営業時間外・過去日時も登録可能。
+    operationId: createReservation
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/reservation.yaml#/CreateReservationRequest"
+    responses:
+      '201':
+        description: "予約登録成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/reservation.yaml#/ReservationResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー（ダブルブッキング含む）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+reservation:
+  get:
+    tags:
+      - Reservations
+    summary: 予約詳細取得
+    operationId: getReservation
+    parameters:
+      - $ref: "../components/parameters.yaml#/ReservationId"
+    responses:
+      '200':
+        description: "予約詳細取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/reservation.yaml#/ReservationResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+  patch:
+    tags:
+      - Reservations
+    summary: 予約更新
+    description: >
+      start_at または menu_id を変更した場合、end_at を再計算する。
+      ステータス遷移の制限はない（キャンセル＝status を cancelled に変更）。
+      ダブルブッキング判定は登録時と同様（自身のレコードは除外）。
+    operationId: updateReservation
+    parameters:
+      - $ref: "../components/parameters.yaml#/ReservationId"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/reservation.yaml#/UpdateReservationRequest"
+    responses:
+      '200':
+        description: "予約更新成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/reservation.yaml#/ReservationResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー（ダブルブッキング含む）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - Reservations
+    summary: 予約削除
+    description: Soft Delete。誤登録の取り消し用途で、キャンセル（status=cancelled）とは区別する。
+    operationId: deleteReservation
+    parameters:
+      - $ref: "../components/parameters.yaml#/ReservationId"
+    responses:
+      '204':
+        description: "予約削除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

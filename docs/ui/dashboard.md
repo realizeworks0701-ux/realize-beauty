@@ -16,12 +16,13 @@
 
 ### KPI
 
-GET /api/v1/dashboard が返す値に合わせる（売上・予約はMVP対象外）。
+GET /api/v1/dashboard が返す値に合わせる（売上はMVP対象外。予約は v0.3 予約コアで追加）。
 
 * 今日の来店
 * 新規顧客
 * 総顧客数
 * 今月のカルテ
+* 今日の予約（`today_reservations`。当日JST・status が reserved / visited の件数。クリックで /reservations へ遷移）
 
 KPIカードはグラデーション背景（design-system.md の Gradient 参照）。
 

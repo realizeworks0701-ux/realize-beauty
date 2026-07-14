@@ -17,6 +17,9 @@
 * アカウント情報
 * パスワード変更
 * ログアウト
+* サロン設定への導線カード
+  * メニュー管理（/settings/menus へ遷移。[settings-menus.md](settings-menus.md)）
+  * 営業時間設定（/settings/business-hours へ遷移。[settings-business-hours.md](settings-business-hours.md)）
 
 ---
 
@@ -31,3 +34,5 @@
 
 * 保存
 * ログアウト
+* メニュー管理へ
+* 営業時間設定へ

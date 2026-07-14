@@ -122,6 +122,17 @@ RecordStatus:
 
 ########################################################
 
+ReservationStatus:
+  type: string
+  enum:
+    - reserved
+    - visited
+    - cancelled
+    - no_show
+  example: reserved
+
+########################################################
+
 Role:
   type: string
 

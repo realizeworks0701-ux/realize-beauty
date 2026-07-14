@@ -15,6 +15,7 @@ DashboardResponse:
         - records_this_month
         - new_customers
         - total_customers
+        - today_reservations
 
       properties:
 
@@ -37,6 +38,11 @@ DashboardResponse:
           type: integer
           description: 今月のカルテ件数
           example: 94
+
+        today_reservations:
+          type: integer
+          description: 今日の予約件数（Asia/Tokyo の当日。status が reserved / visited のみ集計）
+          example: 5
 
         recent_customers:
           type: array

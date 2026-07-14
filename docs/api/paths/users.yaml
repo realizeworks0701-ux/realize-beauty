@@ -1,0 +1,22 @@
+users:
+  get:
+    tags:
+      - Users
+    summary: スタッフ一覧取得
+    description: >
+      自サロンの is_active=true のスタッフのみ返す（予約の担当者選択用）。
+      返却項目は id / name / role のみ。id 昇順・ページネーションなし。
+    operationId: listUsers
+    responses:
+      '200':
+        description: "スタッフ一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/user.yaml#/StaffUserCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"

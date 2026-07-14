@@ -1,0 +1,163 @@
+Reservation:
+  type: object
+  description: 予約
+
+  required:
+    - id
+    - customer
+    - menu
+    - user
+    - start_at
+    - end_at
+    - status
+    - created_at
+    - updated_at
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    customer:
+      $ref: "./customer.yaml#/CustomerSummary"
+
+    menu:
+      $ref: "./menu.yaml#/MenuSummary"
+
+    user:
+      $ref: "./user.yaml#/UserSummary"
+
+    start_at:
+      type: string
+      format: date-time
+      description: 予約開始日時
+      example: "2026-07-14T10:00:00+09:00"
+
+    end_at:
+      type: string
+      format: date-time
+      description: 予約終了日時（start_at + menu.duration_minutes からサーバが導出）
+      example: "2026-07-14T11:00:00+09:00"
+
+    status:
+      $ref: "./common.yaml#/ReservationStatus"
+
+    note:
+      type: string
+      nullable: true
+      example: 前回より明るめのカラー希望
+
+    created_at:
+      type: string
+      format: date-time
+      example: "2026-07-14T09:00:00+09:00"
+
+    updated_at:
+      type: string
+      format: date-time
+      example: "2026-07-14T09:00:00+09:00"
+
+########################################################
+
+ReservationResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/Reservation"
+
+########################################################
+
+ReservationCollection:
+  type: object
+  description: 予約一覧レスポンス（start_at 昇順・ページネーションなし）
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/Reservation"
+
+########################################################
+
+CreateReservationRequest:
+  type: object
+
+  required:
+    - customer_id
+    - menu_id
+    - user_id
+    - start_at
+
+  properties:
+
+    customer_id:
+      type: integer
+      description: 顧客ID（自サロン）
+      example: 1
+
+    menu_id:
+      type: integer
+      description: メニューID（自サロン・is_active=true のみ）
+      example: 1
+
+    user_id:
+      type: integer
+      description: 担当スタッフID（自サロン・is_active=true のみ）
+      example: 1
+
+    start_at:
+      type: string
+      format: date-time
+      description: 予約開始日時（ISO 8601 オフセット付き）。過去日時も可
+      example: "2026-07-14T10:00:00+09:00"
+
+    note:
+      type: string
+      maxLength: 2000
+      nullable: true
+      example: 前回より明るめのカラー希望
+
+########################################################
+
+UpdateReservationRequest:
+  type: object
+
+  properties:
+
+    customer_id:
+      type: integer
+      example: 1
+
+    menu_id:
+      type: integer
+      description: 変更する場合は is_active=true のみ
+      example: 1
+
+    user_id:
+      type: integer
+      example: 1
+
+    start_at:
+      type: string
+      format: date-time
+      description: 変更時は end_at を再計算する
+      example: "2026-07-14T10:00:00+09:00"
+
+    status:
+      $ref: "./common.yaml#/ReservationStatus"
+
+    note:
+      type: string
+      maxLength: 2000
+      nullable: true

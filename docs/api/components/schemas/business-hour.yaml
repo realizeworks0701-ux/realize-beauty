@@ -1,0 +1,76 @@
+BusinessHour:
+  type: object
+  description: >
+    曜日別の営業時間。
+    DBに行が存在しない曜日は「09:00〜19:00 営業」のデフォルト値をAPIが返す。
+
+  required:
+    - day_of_week
+    - is_closed
+    - open_time
+    - close_time
+
+  properties:
+
+    day_of_week:
+      type: integer
+      minimum: 0
+      maximum: 6
+      description: 0=日曜〜6=土曜
+      example: 1
+
+    is_closed:
+      type: boolean
+      description: 定休日フラグ
+      example: false
+
+    open_time:
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+      description: 開店時刻（HH:MM）
+      example: "09:00"
+
+    close_time:
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+      description: 閉店時刻（HH:MM）。open_time より後
+      example: "19:00"
+
+########################################################
+
+BusinessHourCollection:
+  type: object
+  description: 営業時間レスポンス（常に7件、day_of_week 0〜6）
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+      minItems: 7
+      maxItems: 7
+
+      items:
+        $ref: "#/BusinessHour"
+
+########################################################
+
+UpdateBusinessHoursRequest:
+  type: object
+  description: 営業時間の一括置換リクエスト（7曜日分）
+
+  required:
+    - business_hours
+
+  properties:
+
+    business_hours:
+      type: array
+      minItems: 7
+      maxItems: 7
+      description: day_of_week 0〜6 が各1件
+
+      items:
+        $ref: "#/BusinessHour"

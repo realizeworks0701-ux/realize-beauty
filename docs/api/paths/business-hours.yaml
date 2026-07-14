@@ -1,0 +1,54 @@
+businessHours:
+  get:
+    tags:
+      - BusinessHours
+    summary: 営業時間取得
+    description: >
+      常に7件（day_of_week 0=日曜〜6=土曜）を返す。
+      DBに行が存在しない曜日は「09:00〜19:00 営業（is_closed=false）」のデフォルト値を返す。
+    operationId: listBusinessHours
+    responses:
+      '200':
+        description: "営業時間取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/business-hour.yaml#/BusinessHourCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+  put:
+    tags:
+      - BusinessHours
+    summary: 営業時間一括更新
+    description: 7曜日分の一括置換。7件でない場合・day_of_week 重複・close_time が open_time 以前の場合は 422。
+    operationId: updateBusinessHours
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/business-hour.yaml#/UpdateBusinessHoursRequest"
+    responses:
+      '200':
+        description: "営業時間更新成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/business-hour.yaml#/BusinessHourCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"

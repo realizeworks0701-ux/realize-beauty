@@ -1,0 +1,145 @@
+menus:
+  get:
+    tags:
+      - Menus
+    summary: メニュー一覧取得
+    description: display_order 昇順。ページネーションなし。
+    operationId: listMenus
+    parameters:
+      - $ref: "../components/parameters.yaml#/MenuIsActive"
+    responses:
+      '200':
+        description: "メニュー一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/menu.yaml#/MenuCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+  post:
+    tags:
+      - Menus
+    summary: メニュー登録
+    operationId: createMenu
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/menu.yaml#/CreateMenuRequest"
+    responses:
+      '201':
+        description: "メニュー登録成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/menu.yaml#/MenuResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+menu:
+  get:
+    tags:
+      - Menus
+    summary: メニュー詳細取得
+    operationId: getMenu
+    parameters:
+      - $ref: "../components/parameters.yaml#/MenuId"
+    responses:
+      '200':
+        description: "メニュー詳細取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/menu.yaml#/MenuResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+  put:
+    tags:
+      - Menus
+    summary: メニュー更新
+    description: duration_minutes を変更しても既存予約の end_at は変わらない。
+    operationId: updateMenu
+    parameters:
+      - $ref: "../components/parameters.yaml#/MenuId"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/menu.yaml#/UpdateMenuRequest"
+    responses:
+      '200':
+        description: "メニュー更新成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/menu.yaml#/MenuResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - Menus
+    summary: メニュー削除
+    description: Soft Delete。既存予約の menu_id は残る。
+    operationId: deleteMenu
+    parameters:
+      - $ref: "../components/parameters.yaml#/MenuId"
+    responses:
+      '204':
+        description: "メニュー削除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "リソースが見つかりません"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

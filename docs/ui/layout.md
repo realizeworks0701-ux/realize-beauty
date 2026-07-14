@@ -28,6 +28,7 @@
 
 * Dashboard
 * Customers
+* Reservations（予約）
 * Settings
 
 ---

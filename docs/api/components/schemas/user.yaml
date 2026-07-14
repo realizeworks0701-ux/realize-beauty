@@ -15,3 +15,44 @@ UserSummary:
     name:
       type: string
       example: 田中 美咲
+
+########################################################
+
+StaffUser:
+  type: object
+  description: スタッフ一覧用（予約の担当者選択）
+
+  required:
+    - id
+    - name
+    - role
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    name:
+      type: string
+      example: 田中 美咲
+
+    role:
+      $ref: "./common.yaml#/Role"
+
+########################################################
+
+StaffUserCollection:
+  type: object
+  description: スタッフ一覧レスポンス
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/StaffUser"
