@@ -34,7 +34,8 @@ class CustomerApiTest extends TestCase
         Customer::factory()->for($user->salon)->create(['name' => '佐藤 花子', 'kana' => 'サトウ ハナコ']);
         Customer::factory()->for($user->salon)->create(['name' => '田中 美咲', 'kana' => 'タナカ ミサキ']);
 
-        $response = $this->getJson('/api/v1/customers?keyword=佐藤');
+        // 実クライアント同様にURLエンコードする（生のマルチバイトはURIパーサ依存で壊れる）
+        $response = $this->getJson('/api/v1/customers?keyword='.urlencode('佐藤'));
 
         $response->assertOk();
         $response->assertJsonCount(1, 'data');
