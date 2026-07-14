@@ -12,6 +12,7 @@ const auth = useAuthStore()
 const navItems = [
   { label: 'ダッシュボード', icon: 'pi pi-home', to: '/dashboard' },
   { label: '顧客', icon: 'pi pi-users', to: '/customers' },
+  { label: '予約', icon: 'pi pi-calendar', to: '/reservations' },
   { label: '設定', icon: 'pi pi-cog', to: '/settings' },
 ]
 

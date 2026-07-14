@@ -113,6 +113,27 @@ function confirmLogout(): void {
         </div>
       </GlassCard>
 
+      <GlassCard title="サロン設定" icon="pi pi-shop">
+        <div class="salon-links">
+          <RouterLink to="/settings/menus" class="salon-link">
+            <span class="salon-link-icon"><i class="pi pi-list" /></span>
+            <span class="salon-link-body">
+              <span class="salon-link-title">メニュー管理</span>
+              <span class="salon-link-description">施術メニューの登録・並び順・有効/無効</span>
+            </span>
+            <i class="pi pi-angle-right salon-link-arrow" />
+          </RouterLink>
+          <RouterLink to="/settings/business-hours" class="salon-link">
+            <span class="salon-link-icon"><i class="pi pi-clock" /></span>
+            <span class="salon-link-body">
+              <span class="salon-link-title">営業時間設定</span>
+              <span class="salon-link-description">曜日別の営業時間・定休日の設定</span>
+            </span>
+            <i class="pi pi-angle-right salon-link-arrow" />
+          </RouterLink>
+        </div>
+      </GlassCard>
+
       <GlassCard title="ログアウト" icon="pi pi-sign-out">
         <div class="logout-row">
           <p class="logout-note">
@@ -256,6 +277,67 @@ function confirmLogout(): void {
   margin: 0;
   font-size: 0.9rem;
   color: var(--rb-text);
+}
+
+/* ---------- サロン設定 ---------- */
+
+.salon-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.salon-link {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--rb-radius-md);
+  border: 1px solid var(--rb-border);
+  background: rgba(255, 255, 255, 0.55);
+  text-decoration: none;
+  color: var(--rb-text);
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.salon-link:hover {
+  background: var(--rb-pink-faint);
+  box-shadow: var(--rb-shadow-soft);
+}
+
+.salon-link-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--rb-pink-tint);
+  color: var(--rb-pink-strong);
+}
+
+.salon-link-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.salon-link-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.salon-link-description {
+  font-size: 0.8rem;
+  color: var(--rb-text-muted);
+}
+
+.salon-link-arrow {
+  color: var(--rb-pink-soft);
 }
 
 /* ---------- ログアウト ---------- */

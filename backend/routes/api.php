@@ -1,10 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BusinessHourController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\PhotoController;
 use App\Http\Controllers\Api\V1\RecordController;
+use App\Http\Controllers\Api\V1\ReservationController;
+use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -33,5 +37,22 @@ Route::prefix('v1')->group(function () {
         // Photos
         Route::post('records/{recordId}/photos', [PhotoController::class, 'store']);
         Route::delete('photos/{photoId}', [PhotoController::class, 'destroy']);
+
+        // Menus
+        Route::apiResource('menus', MenuController::class);
+
+        // Business Hours
+        Route::get('business-hours', [BusinessHourController::class, 'index']);
+        Route::put('business-hours', [BusinessHourController::class, 'update']);
+
+        // Reservations
+        Route::get('reservations', [ReservationController::class, 'index']);
+        Route::post('reservations', [ReservationController::class, 'store']);
+        Route::get('reservations/{reservationId}', [ReservationController::class, 'show']);
+        Route::patch('reservations/{reservationId}', [ReservationController::class, 'update']);
+        Route::delete('reservations/{reservationId}', [ReservationController::class, 'destroy']);
+
+        // Users
+        Route::get('users', [UserController::class, 'index']);
     });
 });

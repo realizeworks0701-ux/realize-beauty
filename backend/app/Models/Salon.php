@@ -33,6 +33,21 @@ class Salon extends Model
         return $this->hasMany(Customer::class);
     }
 
+    public function menus(): HasMany
+    {
+        return $this->hasMany(Menu::class);
+    }
+
+    public function businessHours(): HasMany
+    {
+        return $this->hasMany(BusinessHour::class);
+    }
+
+    public function reservations(): HasMany
+    {
+        return $this->hasMany(Reservation::class);
+    }
+
     public function recordBlockTemplates(): HasMany
     {
         return $this->hasMany(RecordBlockTemplate::class);

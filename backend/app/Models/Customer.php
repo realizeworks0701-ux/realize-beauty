@@ -40,4 +40,9 @@ class Customer extends Model
     {
         return $this->hasMany(Record::class);
     }
+
+    public function reservations(): HasMany
+    {
+        return $this->hasMany(Reservation::class);
+    }
 }

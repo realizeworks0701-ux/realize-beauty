@@ -60,9 +60,24 @@ const router = createRouter({
       component: () => import('@/pages/record/RecordFormPage.vue'),
     },
     {
+      path: '/reservations',
+      name: 'reservation-calendar',
+      component: () => import('@/pages/reservation/ReservationCalendarPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/pages/settings/SettingsPage.vue'),
+    },
+    {
+      path: '/settings/menus',
+      name: 'settings-menus',
+      component: () => import('@/pages/settings/MenuSettingsPage.vue'),
+    },
+    {
+      path: '/settings/business-hours',
+      name: 'settings-business-hours',
+      component: () => import('@/pages/settings/BusinessHoursSettingsPage.vue'),
     },
     {
       path: '/:pathMatch(.*)*',

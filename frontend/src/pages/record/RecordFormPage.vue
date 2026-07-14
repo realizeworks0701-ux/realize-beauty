@@ -15,6 +15,7 @@ import { customerService } from '@/services/customerService'
 import { recordService } from '@/services/recordService'
 import { photoService } from '@/services/photoService'
 import { extractErrorMessage, extractFieldErrors } from '@/utils/apiError'
+import { toIsoWithOffset } from '@/utils/format'
 import type { Photo, RecordBlockInput, RecordStatus } from '@/types'
 
 interface BlockForm {
@@ -107,19 +108,6 @@ function moveBlock(index: number, delta: -1 | 1): void {
 function removeBlock(index: number): void {
   if (blocks.value.length <= 1) return
   blocks.value.splice(index, 1)
-}
-
-/** ローカルタイムゾーン付き ISO 8601 文字列に変換する */
-function toIsoWithOffset(date: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  const offset = -date.getTimezoneOffset()
-  const sign = offset >= 0 ? '+' : '-'
-  const abs = Math.abs(offset)
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}:00` +
-    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
-  )
 }
 
 interface ValidatedPayload {
