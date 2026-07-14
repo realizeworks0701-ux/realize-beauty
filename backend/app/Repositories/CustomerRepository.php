@@ -59,6 +59,11 @@ class CustomerRepository
         return Customer::where('salon_id', $salonId)->findOrFail($id);
     }
 
+    public function find(int $salonId, int $id): ?Customer
+    {
+        return Customer::where('salon_id', $salonId)->find($id);
+    }
+
     public function create(int $salonId, array $data): Customer
     {
         return Customer::create(array_merge($data, [

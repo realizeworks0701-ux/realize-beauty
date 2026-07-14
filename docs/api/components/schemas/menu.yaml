@@ -1,0 +1,169 @@
+MenuSummary:
+  type: object
+  description: メニュー情報（参照用）
+
+  required:
+    - id
+    - name
+    - price
+    - duration_minutes
+    - is_active
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    name:
+      type: string
+      maxLength: 100
+      example: カット
+
+    price:
+      type: integer
+      description: 税込価格（円）
+      example: 5500
+
+    duration_minutes:
+      type: integer
+      minimum: 5
+      maximum: 480
+      description: 施術時間（分）
+      example: 60
+
+    is_active:
+      type: boolean
+      example: true
+
+########################################################
+
+Menu:
+  allOf:
+
+    - $ref: "#/MenuSummary"
+
+    - type: object
+
+      required:
+        - display_order
+        - created_at
+        - updated_at
+
+      properties:
+
+        display_order:
+          type: integer
+          minimum: 0
+          description: 表示順
+          example: 1
+
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-07-14T10:00:00+09:00"
+
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-07-14T10:00:00+09:00"
+
+########################################################
+
+MenuResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/Menu"
+
+########################################################
+
+MenuCollection:
+  type: object
+  description: メニュー一覧レスポンス（display_order 昇順・同値は id 昇順・ページネーションなし）
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/Menu"
+
+########################################################
+
+CreateMenuRequest:
+  type: object
+
+  required:
+    - name
+    - price
+    - duration_minutes
+
+  properties:
+
+    name:
+      type: string
+      maxLength: 100
+      example: カット
+
+    price:
+      type: integer
+      minimum: 0
+      maximum: 9999999
+      description: 税込価格（円）
+      example: 5500
+
+    duration_minutes:
+      type: integer
+      minimum: 5
+      maximum: 480
+      description: 施術時間（分）
+      example: 60
+
+    display_order:
+      type: integer
+      minimum: 0
+      description: 表示順（省略時はサーバが同一サロン内の max(display_order)+1 を採番する）
+      example: 1
+
+    is_active:
+      type: boolean
+      description: 有効フラグ（省略時 true）
+      example: true
+
+########################################################
+
+UpdateMenuRequest:
+  type: object
+
+  properties:
+
+    name:
+      type: string
+      maxLength: 100
+
+    price:
+      type: integer
+      minimum: 0
+      maximum: 9999999
+
+    duration_minutes:
+      type: integer
+      minimum: 5
+      maximum: 480
+
+    display_order:
+      type: integer
+      minimum: 0
+
+    is_active:
+      type: boolean

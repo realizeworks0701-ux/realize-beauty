@@ -25,6 +25,7 @@ class DashboardController extends Controller
                 'new_customers' => $summary['new_customers'],
                 'total_customers' => $summary['total_customers'],
                 'records_this_month' => $summary['records_this_month'],
+                'today_reservations' => $summary['today_reservations'],
                 'recent_customers' => CustomerResource::collection($summary['recent_customers']),
                 'recent_records' => RecordResource::collection($summary['recent_records']),
             ],

@@ -19,6 +19,20 @@ PhotoId:
   schema:
     type: integer
 
+MenuId:
+  name: menuId
+  in: path
+  required: true
+  schema:
+    type: integer
+
+ReservationId:
+  name: reservationId
+  in: path
+  required: true
+  schema:
+    type: integer
+
 Keyword:
   name: keyword
   in: query
@@ -69,3 +83,40 @@ VisitedBefore:
   schema:
     type: string
     format: date
+
+MenuIsActive:
+  name: is_active
+  in: query
+  description: true 指定で有効なメニューのみ取得
+  schema:
+    type: boolean
+
+ReservationFrom:
+  name: from
+  in: query
+  description: 期間開始日（JST）。省略時は当日
+  schema:
+    type: string
+    format: date
+
+ReservationTo:
+  name: to
+  in: query
+  description: 期間終了日（JST）。省略時は from と同日。from から最大31日
+  schema:
+    type: string
+    format: date
+
+ReservationUserId:
+  name: user_id
+  in: query
+  description: 担当スタッフIDで絞り込み
+  schema:
+    type: integer
+
+ReservationStatusFilter:
+  name: status
+  in: query
+  description: 予約ステータスで絞り込み
+  schema:
+    $ref: "./schemas/common.yaml#/ReservationStatus"

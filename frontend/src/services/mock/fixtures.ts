@@ -1,4 +1,14 @@
-import type { Customer, Photo, TreatmentRecord, User } from '@/types'
+import type {
+  BusinessHour,
+  Customer,
+  Menu,
+  Photo,
+  Reservation,
+  StaffUser,
+  TreatmentRecord,
+  User,
+} from '@/types'
+import { toIsoWithOffset } from '@/utils/format'
 
 /**
  * 開発用モックデータ（VITE_USE_MOCK=true のときのみ使用）
@@ -197,5 +207,100 @@ export const mockRecords: TreatmentRecord[] = [
     photos: [],
     created_at: '2026-07-01T14:00:00+09:00',
     updated_at: '2026-07-01T14:00:00+09:00',
+  },
+]
+
+export const mockStaffUsers: StaffUser[] = [
+  { id: 1, name: '山田 太郎', role: 'owner' },
+  { id: 2, name: '田中 美咲', role: 'staff' },
+  { id: 3, name: '佐藤 恵', role: 'staff' },
+]
+
+export const mockMenus: Menu[] = [
+  {
+    id: 1,
+    name: 'カット',
+    price: 5500,
+    duration_minutes: 60,
+    display_order: 1,
+    is_active: true,
+    created_at: '2026-07-01T10:00:00+09:00',
+    updated_at: '2026-07-01T10:00:00+09:00',
+  },
+  {
+    id: 2,
+    name: 'カラー',
+    price: 8800,
+    duration_minutes: 90,
+    display_order: 2,
+    is_active: true,
+    created_at: '2026-07-01T10:00:00+09:00',
+    updated_at: '2026-07-01T10:00:00+09:00',
+  },
+  {
+    id: 3,
+    name: 'パーマ（旧）',
+    price: 9900,
+    duration_minutes: 120,
+    display_order: 3,
+    is_active: false,
+    created_at: '2026-07-01T10:00:00+09:00',
+    updated_at: '2026-07-01T10:00:00+09:00',
+  },
+]
+
+export const mockBusinessHours: BusinessHour[] = [
+  { day_of_week: 0, is_closed: true, open_time: '09:00', close_time: '19:00' },
+  { day_of_week: 1, is_closed: false, open_time: '09:00', close_time: '19:00' },
+  { day_of_week: 2, is_closed: false, open_time: '09:00', close_time: '19:00' },
+  { day_of_week: 3, is_closed: false, open_time: '09:00', close_time: '19:00' },
+  { day_of_week: 4, is_closed: false, open_time: '09:00', close_time: '19:00' },
+  { day_of_week: 5, is_closed: false, open_time: '09:00', close_time: '21:00' },
+  { day_of_week: 6, is_closed: false, open_time: '09:00', close_time: '18:00' },
+]
+
+const todayAt = (hours: number, minutes: number): string => {
+  const date = new Date()
+  date.setHours(hours, minutes, 0, 0)
+  return toIsoWithOffset(date)
+}
+
+/** 当日ベースの予約フィクスチャ（カレンダー確認用の最小セット） */
+export const buildMockReservations = (): Reservation[] => [
+  {
+    id: 1,
+    customer: { id: 1, name: '佐藤 花子', kana: 'サトウ ハナコ', phone: '090-1234-5678' },
+    menu: { id: 1, name: 'カット', price: 5500, duration_minutes: 60, is_active: true },
+    user: { id: 1, name: '山田 太郎' },
+    start_at: todayAt(10, 0),
+    end_at: todayAt(11, 0),
+    status: 'reserved',
+    note: null,
+    created_at: todayAt(9, 0),
+    updated_at: todayAt(9, 0),
+  },
+  {
+    id: 2,
+    customer: { id: 2, name: '田中 美咲', kana: 'タナカ ミサキ', phone: '080-2345-6789' },
+    menu: { id: 2, name: 'カラー', price: 8800, duration_minutes: 90, is_active: true },
+    user: { id: 2, name: '田中 美咲' },
+    start_at: todayAt(13, 0),
+    end_at: todayAt(14, 30),
+    status: 'visited',
+    note: '前回より明るめのカラー希望',
+    created_at: todayAt(9, 0),
+    updated_at: todayAt(9, 0),
+  },
+  {
+    id: 3,
+    customer: { id: 4, name: '高橋 結衣', kana: 'タカハシ ユイ', phone: '090-4567-8901' },
+    menu: { id: 1, name: 'カット', price: 5500, duration_minutes: 60, is_active: true },
+    user: { id: 1, name: '山田 太郎' },
+    start_at: todayAt(10, 30),
+    end_at: todayAt(11, 30),
+    status: 'cancelled',
+    note: '体調不良のためキャンセル',
+    created_at: todayAt(9, 0),
+    updated_at: todayAt(9, 30),
   },
 ]

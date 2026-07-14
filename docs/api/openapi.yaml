@@ -24,6 +24,14 @@ tags:
     description: カルテ管理
   - name: Photos
     description: 写真管理
+  - name: Menus
+    description: メニュー管理
+  - name: BusinessHours
+    description: 営業時間設定
+  - name: Reservations
+    description: 予約管理
+  - name: Users
+    description: スタッフ（参照用）
 
 security:
   - bearerAuth: []
@@ -62,6 +70,24 @@ paths:
 
   /photos/{photoId}:
     $ref: "./paths/photos.yaml#/photo"
+
+  /menus:
+    $ref: "./paths/menus.yaml#/menus"
+
+  /menus/{menuId}:
+    $ref: "./paths/menus.yaml#/menu"
+
+  /business-hours:
+    $ref: "./paths/business-hours.yaml#/businessHours"
+
+  /reservations:
+    $ref: "./paths/reservations.yaml#/reservations"
+
+  /reservations/{reservationId}:
+    $ref: "./paths/reservations.yaml#/reservation"
+
+  /users:
+    $ref: "./paths/users.yaml#/users"
 
 components:
 

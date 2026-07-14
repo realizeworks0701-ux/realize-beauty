@@ -17,7 +17,8 @@ class PhotoApiTest extends TestCase
 
     public function test_upload_stores_photo(): void
     {
-        Storage::fake('public');
+        // 既定ディスク（本番は r2）に保存されることを固定する。ディスクを固定書きすると本番で URL と実体が食い違う
+        $disk = Storage::fake(config('filesystems.default'));
         $user = $this->actingAsSalonUser();
         $record = Record::factory()->for($user->salon)->for($user)
             ->for(Customer::factory()->for($user->salon))->create();
@@ -31,6 +32,7 @@ class PhotoApiTest extends TestCase
         $response->assertJsonStructure(['data' => ['id', 'url', 'caption', 'sort_order']]);
         $response->assertJsonPath('data.caption', '施術前');
         $this->assertDatabaseHas('photos', ['record_id' => $record->id, 'caption' => '施術前']);
+        $disk->assertExists(Photo::firstOrFail()->path);
     }
 
     public function test_upload_requires_image(): void
@@ -57,6 +59,7 @@ class PhotoApiTest extends TestCase
 
     public function test_destroy_deletes_photo(): void
     {
+        Storage::fake(config('filesystems.default'));
         $user = $this->actingAsSalonUser();
         $record = Record::factory()->for($user->salon)->for($user)
             ->for(Customer::factory()->for($user->salon))->create();

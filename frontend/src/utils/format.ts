@@ -1,4 +1,4 @@
-import type { Gender, RecordStatus } from '@/types'
+import type { Gender, RecordStatus, ReservationStatus } from '@/types'
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
@@ -36,6 +36,53 @@ export const RECORD_STATUS_LABELS: Record<RecordStatus, string> = {
 
 export function recordStatusLabel(status: RecordStatus): string {
   return RECORD_STATUS_LABELS[status]
+}
+
+export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
+  reserved: '予約済み',
+  visited: '来店済み',
+  cancelled: 'キャンセル',
+  no_show: '無断キャンセル',
+}
+
+export function reservationStatusLabel(status: ReservationStatus): string {
+  return RESERVATION_STATUS_LABELS[status]
+}
+
+export function formatTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const
+
+export function weekdayLabel(dayOfWeek: number): string {
+  return WEEKDAY_LABELS[dayOfWeek] ?? ''
+}
+
+/** Date → "2026年7月14日（火）" */
+export function formatDateJa(date: Date): string {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日（${weekdayLabel(date.getDay())}）`
+}
+
+/** Date → API クエリ用の "YYYY-MM-DD"（ローカル日付） */
+export function toDateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** ローカルタイムゾーン付き ISO 8601 文字列に変換する */
+export function toIsoWithOffset(date: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const offset = -date.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:00` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  )
 }
 
 /** "2026-07-08T14:00:00+09:00" → input[type=date] 用 "2026-07-08" */

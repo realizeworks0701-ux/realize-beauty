@@ -42,7 +42,7 @@ onMounted(async () => {
 
     <div class="kpi-grid">
       <template v-if="loading">
-        <Skeleton v-for="n in 4" :key="n" height="98px" border-radius="20px" />
+        <Skeleton v-for="n in 5" :key="n" height="98px" border-radius="20px" />
       </template>
       <template v-else-if="summary">
         <KpiCard
@@ -73,6 +73,15 @@ onMounted(async () => {
           icon="pi pi-file-edit"
           variant="cream"
         />
+        <RouterLink to="/reservations" class="kpi-link" aria-label="予約カレンダーへ">
+          <KpiCard
+            label="今日の予約"
+            :value="summary.today_reservations"
+            suffix="件"
+            icon="pi pi-calendar-clock"
+            variant="rose"
+          />
+        </RouterLink>
       </template>
     </div>
 
@@ -157,6 +166,12 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
+}
+
+.kpi-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
 }
 
 .panel-grid {
