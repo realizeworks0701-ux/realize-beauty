@@ -30,6 +30,7 @@ Realize Beautyは美容サロン向け業務支援システムである。
 | postal_code | string | 郵便番号 |
 | address | string | 住所 |
 | business_hours | text | nullable, **deprecated**（自由記述。`business_hours` テーブルへ移行。削除はしない） |
+| booking_slug | string | nullable, Unique。公開Web予約ページURL用の16文字英数小文字ランダム（フェーズ2 Web予約で追加）。新規サロンは Salon モデルの creating フックで自動生成（unique 衝突時はリトライ）。マイグレーションで既存サロンにもバックフィルし、以後は NOT NULL 相当で運用。再生成（ローテーション）はスコープ外（当面はサポートによる手動更新） |
 | is_active | boolean | default true |
 | created_at | timestamp | |
 | updated_at | timestamp | |
@@ -68,6 +69,10 @@ Realize Beautyは美容サロン向け業務支援システムである。
 | birthday | date | nullable |
 | phone | string | nullable |
 | email | string | nullable |
+| line_user_id | string | nullable。LINEユーザーID（フェーズ2 LINE連携で追加） |
+| line_linked_at | timestamptz | nullable。LINE連携完了日時 |
+| line_link_code | string | nullable。ワンタイム連携コード。6文字（A-Z, 2-9 のうち曖昧な I / O を除外）。未連携顧客（line_user_id が null）のWeb予約完了時に毎回新規生成して上書き（旧コードは即失効）。連携成立時に null クリア（単回使用） |
+| line_link_code_expires_at | timestamptz | nullable。連携コードの有効期限（発行から72時間）。連携成立時に null クリア |
 | memo | text | nullable |
 | first_visit_at | date | 初回来店日 |
 | last_visit_at | date | 最終来店日 |
@@ -139,6 +144,7 @@ Salon
 │   └── Reservations
 ├── Menus
 ├── BusinessHours
+├── LineSetting（1:1）
 └── RecordBlockTemplates
 ```
 ---
@@ -213,12 +219,40 @@ Salon
 | start_at | timestamptz | 予約開始日時 |
 | end_at | timestamptz | 予約終了日時（サーバ導出。API入力では受け取らない） |
 | status | string | reserved / visited / cancelled / no_show, default 'reserved' |
+| source | string | staff / web, default 'staff'（フェーズ2 Web予約で追加） |
+| booking_token | string | nullable, Unique（unique index）。Web予約時のみ生成（キャンセルページURL用）。CSPRNG 由来の `Str::random(32)`（英数大小32文字、128bit 超のエントロピー）で生成する |
+| reminder_sent_at | timestamptz | nullable。前日リマインダー送信日時（フェーズ2 LINE連携で追加） |
 | note | text | nullable |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 | deleted_at | timestamp | nullable, Soft Delete |
 
 - end_at は `start_at + menu.duration_minutes` から導出（start_at または menu_id 変更時に再計算）
+
+---
+
+# line_settings
+
+サロンごとの LINE Messaging API チャネル設定（フェーズ2 LINE連携で追加）
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| salon_id | bigint | FK → salons.id, Unique（1サロン1設定） |
+| channel_id | string | Messaging API チャネルID |
+| channel_secret | text | **暗号化保存**（Laravel `encrypted` cast） |
+| channel_access_token | text | **暗号化保存**（Laravel `encrypted` cast）。長期チャネルアクセストークン |
+| bot_user_id | string | nullable, Unique。接続確認時に GET /v2/bot/info から取得。webhook の destination 照合キー |
+| bot_basic_id | string | nullable。友だち追加URL用（`https://line.me/R/ti/p/{basicId}`） |
+| bot_display_name | string | nullable。接続確認時に GET /v2/bot/info の displayName を保存（設定画面で表示） |
+| is_active | boolean | default false。接続確認成功で true |
+| connected_at | timestamptz | nullable |
+| last_webhook_at | timestamptz | nullable。webhook の**署名検証成功時のみ**更新（設定画面に「最終Webhook受信」として表示） |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- Soft Delete は採用しない（連携解除時は物理削除）
+- 連携解除（DELETE）時は、当該サロンの customers の `line_user_id` / `line_linked_at` / `line_link_code` / `line_link_code_expires_at` を一括クリアする（LINE の userId はチャネルのプロバイダー単位スコープのため、別チャネル再接続後は無効になる）
 
 ---
 
@@ -262,6 +296,24 @@ Salon
 
 - (salon_id, day_of_week)
 
+## salons
+
+- booking_slug
+
+## customers
+
+- (salon_id, line_user_id) — 部分 Unique Index（`WHERE line_user_id IS NOT NULL`）
+- (salon_id, line_link_code)
+
+## reservations
+
+- booking_token
+
+## line_settings
+
+- salon_id
+- bot_user_id
+
 ---
 
 # Foreign Keys
@@ -297,6 +349,11 @@ Laravel PHP Enumを採用する。
 - cancelled
 - no_show
 
+## ReservationSource
+
+- staff
+- web
+
 ---
 
 # Soft Delete
@@ -308,6 +365,8 @@ Laravel PHP Enumを採用する。
 - photos
 - menus
 - reservations
+
+line_settings は採用しない（連携解除時は物理削除）。
 
 ---
 
@@ -328,7 +387,9 @@ Salon
 │
 ├── Menus
 │
-└── BusinessHours
+├── BusinessHours
+│
+└── LineSetting（1:1）
 ```
 
 ---
@@ -342,6 +403,7 @@ Salon
 - hasMany(Menu)
 - hasMany(BusinessHour)
 - hasMany(Reservation)
+- hasOne(LineSetting)
 - hasMany(RecordBlockTemplate)
 
 User
@@ -374,6 +436,10 @@ Menu
 - hasMany(Reservation)
 
 BusinessHour
+
+- belongsTo(Salon)
+
+LineSetting
 
 - belongsTo(Salon)
 
@@ -448,8 +514,14 @@ status が reserved / visited の予約と時間帯 `[start_at, end_at)` が重�
 
 cancelled / no_show は重複判定から除外する。
 
-判定は ReservationService 内で `DB::transaction` + 対象範囲の行を `lockForUpdate` してから行い、
-同時リクエストによるすり抜けを防ぐ。
+判定は ReservationService 内で `DB::transaction` を開始し、
+`pg_advisory_xact_lock`（キー: `reservation:{salonId}:{userId}` のハッシュ）で
+同一サロン・同一スタッフへの登録・変更を直列化したうえで、重複行を `lockForUpdate` で確認してから行う。
+advisory lock はトランザクション終了時に自動解放される。
+
+空き時間帯には行ロック対象の行が存在しないため、`lockForUpdate` のみでは同時 INSERT のすり抜けを防げない。
+advisory lock により、サロン手動予約 × Web予約を含む同時登録のダブルブッキングを防止する
+（フェーズ2の公開Web予約も同じ Service 経由で同一のロックを通す）。
 
 DB制約（EXCLUDE制約等）は採用しない（過剰設計を避ける）。
 
@@ -475,6 +547,52 @@ DB制約（EXCLUDE制約等）は採用しない（過剰設計を避ける）�
 
 ---
 
+## LINE チャネル認証情報の暗号化保存
+
+LINE Messaging API の接続情報はサロンごとに `line_settings` へ保存するデータ駆動方式とする（サロン追加時のコード変更・デプロイは不要）。
+
+`channel_secret` と `channel_access_token` は Laravel の `encrypted` cast でDBに暗号化保存する。
+
+webhook は全サロン共通の1エンドポイントとし、リクエストボディの `destination`（bot user ID）を
+`line_settings.bot_user_id` と照合してサロンを特定する。
+
+詳細は [ADR-024](../decisions/ADR-024-line-integration.md)（Web予約・LINE連携）。
+
+---
+
+## LINE連携の本人紐付け（ワンタイム連携コード）
+
+顧客はログインアカウントを持たないため、Messaging API の account link 機能は使わない。
+
+未連携顧客（`line_user_id` が null）のWeb予約完了時に `customers.line_link_code`
+（6文字。A-Z, 2-9 のうち曖昧な I / O を除外）を毎回新規生成して上書きし（旧コードは即失効）、
+有効期限（`line_link_code_expires_at` = 発行から72時間）を設定する。
+
+顧客がLINEトークでコードを送信 → webhook で照合して `customers.line_user_id` / `line_linked_at` に保存する。
+照合は destination で特定したサロン内の顧客に限定し、`line_user_id` が null かつ期限内のコードのみ対象とする
+（既に連携済みの顧客のコードは照合不成立 = 上書き・乗っ取り不可）。
+成立時に `line_link_code` / `line_link_code_expires_at` を null クリアする（単回使用）。
+
+unfollow 時は `line_user_id` / `line_linked_at` を null に戻す。
+
+---
+
+## Web予約の公開識別子（booking_slug / booking_token）
+
+公開Web予約ページのURLには連番IDを使わず、`salons.booking_slug`（16文字の英数小文字ランダム）を使用する。
+新規サロンは Salon モデルの creating フックで自動生成する（unique 衝突時はリトライ）。
+
+キャンセルページのURLには `reservations.booking_token`（Web予約時のみ生成, Unique）を使用し、
+認証なしのエンドポイントでも予約が推測されないようにする。
+
+booking_token は認証代わりの秘密トークンであるため、生成方式を以下のとおり規定する。
+
+- CSPRNG（暗号論的乱数）由来の `Str::random(32)`（英数大小32文字、128bit 超のエントロピー）で生成する
+- 連番・タイムスタンプ・短いランダム値など、列挙・推測可能な生成方式は採用してはならない
+- OpenAPI では minLength / maxLength: 32、pattern `^[A-Za-z0-9]{32}$` として定義する
+
+---
+
 ## 将来の複数店舗対応
 
 MVPでは `users.salon_id` を採用する。
@@ -496,8 +614,6 @@ MVPでは実装しない。
 
 # Future Roadmap
 
-- Web予約
-- LINE連携
 - AIチャット
 - 売上分析
 - ダッシュボード

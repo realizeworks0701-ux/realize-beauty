@@ -1,0 +1,150 @@
+lineSettings:
+  get:
+    tags:
+      - LineSettings
+    summary: LINE連携設定取得
+    description: >
+      自サロンの LINE連携設定と接続状態、webhook URL を返す。
+      channel_secret / channel_access_token はマスク表示（末尾4文字のみ）で、平文はレスポンスに含めない。
+      認証情報が未登録でも 404 にはせず、configured=false + webhook_url を返す（設定画面の初期表示用）。
+      last_webhook_at（署名検証成功時のみ更新）は設定画面の「最終Webhook受信」として表示し、
+      channel_secret が正しく設定されているかの確認手段とする。
+    operationId: getLineSettings
+    responses:
+      '200':
+        description: "LINE連携設定取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/line-setting.yaml#/LineSettingResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+  put:
+    tags:
+      - LineSettings
+    summary: LINE認証情報保存
+    description: >
+      channel_id / channel_secret / channel_access_token を保存する（1サロン1設定の upsert）。
+      値はDBに暗号化保存される。
+      channel_secret / channel_access_token を変更した場合は is_active=false に戻し、
+      再度の接続確認（POST /line-settings/verify）を要求する
+      （未検証の認証情報で「接続済み」表示のまま稼働することを防ぐ。is_active は接続確認でのみ true になる）。
+      レスポンスの secret / token はマスク表示（末尾4文字のみ）。
+    operationId: updateLineSettings
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/line-setting.yaml#/UpdateLineSettingRequest"
+    responses:
+      '200':
+        description: "LINE認証情報保存成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/line-setting.yaml#/LineSettingResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - LineSettings
+    summary: LINE連携解除
+    description: >
+      LINE連携設定を物理削除する（SoftDelete ではない）。
+      あわせて当該サロンの customers の line_user_id / line_linked_at / line_link_code / line_link_code_expires_at を
+      一括クリアする（LINE の userId はチャネルのプロバイダー単位スコープのため、別チャネル再接続後は無効になる）。
+    operationId: deleteLineSettings
+    responses:
+      '204':
+        description: "LINE連携解除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "LINE連携設定が未登録"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+
+lineSettingsVerify:
+  post:
+    tags:
+      - LineSettings
+    summary: LINE接続確認
+    description: >
+      保存済みの認証情報で LINE の GET /v2/bot/info を呼び出し、
+      成功時は bot_user_id / bot_basic_id / bot_display_name を保存して is_active=true・connected_at を記録する。
+      失敗時（channel_access_token 不正・LINE API エラー）は 422。
+      GET /v2/bot/info で検証できるのは channel_access_token のみで、
+      channel_secret / channel_id の正しさはこの確認では検証されない
+      （実際の webhook 受信＝last_webhook_at の更新でのみ確認できる。設定手順ガイドで
+      「設定後にトークへテストメッセージを送り、最終Webhook受信が更新されることを確認」するよう案内する）。
+      リクエストボディは不要。レスポンスの secret / token はマスク表示（末尾4文字のみ）。
+    operationId: verifyLineSettings
+    responses:
+      '200':
+        description: "接続確認成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/line-setting.yaml#/LineSettingResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "LINE連携設定が未登録"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "接続確認失敗（channel_access_token 不正・LINE API エラー。channel_secret / channel_id の誤りはここでは検出できない）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+bookingPage:
+  get:
+    tags:
+      - BookingPage
+    summary: Web予約ページ情報取得
+    description: 自サロンの booking_slug と公開予約ページURLを返す（salons テーブルから）。設定画面のURL表示・コピー用。
+    operationId: getBookingPage
+    responses:
+      '200':
+        description: "Web予約ページ情報取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/line-setting.yaml#/BookingPageResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"

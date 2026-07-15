@@ -67,22 +67,26 @@
 
 # Version 0.3
 
-## Reservation Core（フェーズ1・進行中）
+## Reservation Core（フェーズ1・完了）
 
 > 設計: [docs/requirements/reservation.md](../requirements/reservation.md) / [ADR-023](../decisions/ADR-023-reservation-core.md)
 
-- [ ] メニュー管理
-- [ ] 営業時間設定
-- [ ] 予約CRUD（カレンダー・変更・キャンセル）
-- [ ] ダッシュボード「今日の予約」
+- [x] メニュー管理
+- [x] 営業時間設定
+- [x] 予約CRUD（カレンダー・変更・キャンセル）
+- [x] ダッシュボード「今日の予約」
 
 ---
 
-## Reservation（フェーズ2）
+## Reservation（フェーズ2・進行中）
 
-- [ ] Web予約
-- [ ] LINE予約（ミニアプリ）
-- [ ] リマインド通知
+> 設計: [docs/requirements/booking.md](../requirements/booking.md) / [ADR-024](../decisions/ADR-024-line-integration.md)
+> LINE予約（ミニアプリ）は採用せず backlog（LIFF/ミニアプリの再検討）へ移動
+
+- [ ] Web予約ページ
+- [ ] LINE連携（サロン別チャネル接続）
+- [ ] 連携コードによる顧客紐付け
+- [ ] LINE通知（予約確定 push・前日リマインダー）
 
 ---
 
@@ -94,7 +98,8 @@
 
 ## Notification
 
-- [ ] LINE通知
+> LINE通知（予約確定 push・前日リマインダー）はフェーズ2の項目へ統合済み
+
 - [ ] メール通知
 
 ---

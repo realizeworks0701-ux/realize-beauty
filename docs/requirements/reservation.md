@@ -29,7 +29,7 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 | フェーズ | 内容 | 本書の対象 |
 |---------|------|-----------|
 | フェーズ1 | 予約コア＝メニュー管理・営業時間・予約CRUD・サロン側予約カレンダー・ダッシュボード「今日の予約」 | ✓ |
-| フェーズ2 | 顧客向けWeb予約・LINE予約（ミニアプリ）・リマインド通知 | 対象外 |
+| フェーズ2 | 公開Web予約ページ・LINE連携（サロン別チャネル接続）・連携コードによる顧客紐付け・前日リマインダー（詳細は [booking.md](booking.md) / [ADR-024](../decisions/ADR-024-line-integration.md)。LINEミニアプリは不採用） | 対象外 |
 | フェーズ3 | Googleカレンダー同期 | 対象外 |
 
 ---
@@ -46,7 +46,7 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 
 ### Out of Scope（実装しない）
 
-- 顧客向けWeb予約・LINE予約・リマインド通知（フェーズ2）
+- 公開Web予約ページ・LINE連携・前日リマインダー（フェーズ2）
 - Googleカレンダー同期（フェーズ3）
 - スタッフシフト管理
 - 複数メニュー同時予約（1予約＝1メニュー）
@@ -155,7 +155,7 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 
 # Business Rules
 
-1. **ダブルブッキング禁止**: 同一サロン・同一担当スタッフ（user_id）で、status が `reserved` / `visited` の予約と時間帯 `[start_at, end_at)` が重なる登録・変更は 422 エラーとする。エラーメッセージ（決定事項）: `指定した時間帯は既に予約が入っています。`（`start_at` フィールドのエラーとして返す）。`cancelled` / `no_show` は重複判定から除外する。判定は ReservationService 内で `DB::transaction` + 対象範囲の行を `lockForUpdate` してから行う
+1. **ダブルブッキング禁止**: 同一サロン・同一担当スタッフ（user_id）で、status が `reserved` / `visited` の予約と時間帯 `[start_at, end_at)` が重なる登録・変更は 422 エラーとする。エラーメッセージ（決定事項）: `指定した時間帯は既に予約が入っています。`（`start_at` フィールドのエラーとして返す）。`cancelled` / `no_show` は重複判定から除外する。判定は ReservationService 内で `DB::transaction` + advisory lock（`pg_advisory_xact_lock`。キー `reservation:{salonId}:{userId}`）を取得してから行う
 2. **営業時間は手動予約をブロックしない**: 営業時間外・定休日への予約登録も可能。カレンダーUIではグレーアウト表示のみ行う
 3. **ステータス遷移は制限しない**（フェーズ1）
 4. **過去日時の予約登録を許可する**（事後入力用途）
@@ -200,8 +200,8 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 
 フェーズ1では実装しない。
 
-- 顧客向けWeb予約（フェーズ2）
-- LINE予約・リマインド通知（フェーズ2）
+- 公開Web予約ページ（フェーズ2）
+- LINE連携・前日リマインダー（フェーズ2）
 - Googleカレンダー同期（フェーズ3）
 - スタッフシフト管理
 - 複数メニュー同時予約

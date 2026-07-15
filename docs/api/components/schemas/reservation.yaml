@@ -43,6 +43,12 @@ Reservation:
     status:
       $ref: "./common.yaml#/ReservationStatus"
 
+    source:
+      type: string
+      enum: [staff, web]
+      description: 予約の登録経路（staff=サロン側で登録、web=公開Web予約）
+      example: staff
+
     note:
       type: string
       nullable: true
