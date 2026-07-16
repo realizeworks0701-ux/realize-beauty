@@ -16,3 +16,8 @@
 | 12 | Reservation Calendar    | /reservations                 |
 | 13 | Menu Settings           | /settings/menus               |
 | 14 | Business Hours Settings | /settings/business-hours      |
+| 15 | LINE Settings           | /settings/line                |
+| 16 | Public Booking          | /booking/:slug                |
+| 17 | Public Booking Cancel   | /booking/cancel/:token        |
+
+* No 16・17 は**認証なしでアクセスできる公開ページ**（顧客向け）。認証ガード対象外の公開ルートとし、PublicLayout（サイドバーなし・モバイルファースト）を使用する（[public-booking.md](public-booking.md)）

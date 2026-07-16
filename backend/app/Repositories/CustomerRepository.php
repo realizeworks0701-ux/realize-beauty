@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Customer;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 
 class CustomerRepository
 {
@@ -81,5 +82,88 @@ class CustomerRepository
     public function delete(Customer $customer): void
     {
         $customer->delete();
+    }
+
+    /**
+     * 正規化 phone が完全一致する未削除顧客のうち id 最小を返す（Web予約の顧客マッチング）。
+     */
+    public function findFirstByNormalizedPhone(int $salonId, string $normalizedPhone): ?Customer
+    {
+        return Customer::where('salon_id', $salonId)
+            ->whereNormalizedPhone($normalizedPhone)
+            ->orderBy('id')
+            ->first();
+    }
+
+    public function lineLinkCodeExists(int $salonId, string $code): bool
+    {
+        return Customer::withTrashed()
+            ->where('salon_id', $salonId)
+            ->where('line_link_code', $code)
+            ->exists();
+    }
+
+    /**
+     * ワンタイム連携コードを発行する（毎回上書きし、旧コードは即失効する）。
+     */
+    public function issueLineLinkCode(Customer $customer, string $code, Carbon $expiresAt): void
+    {
+        $customer->update([
+            'line_link_code' => $code,
+            'line_link_code_expires_at' => $expiresAt,
+        ]);
+    }
+
+    /**
+     * 未使用・期限内の連携コードを持つ未連携顧客を照合する（サロン内限定）。
+     */
+    public function findByActiveLineLinkCode(int $salonId, string $code): ?Customer
+    {
+        return Customer::where('salon_id', $salonId)
+            ->where('line_link_code', $code)
+            ->whereNull('line_user_id')
+            ->where('line_link_code_expires_at', '>', now())
+            ->first();
+    }
+
+    public function findByLineUserId(int $salonId, string $lineUserId): ?Customer
+    {
+        return Customer::where('salon_id', $salonId)
+            ->where('line_user_id', $lineUserId)
+            ->first();
+    }
+
+    /**
+     * LINE連携を成立させる（連携コードは単回使用のためクリアする）。
+     */
+    public function linkLineUser(Customer $customer, string $lineUserId): void
+    {
+        $customer->update([
+            'line_user_id' => $lineUserId,
+            'line_linked_at' => now(),
+            'line_link_code' => null,
+            'line_link_code_expires_at' => null,
+        ]);
+    }
+
+    /**
+     * unfollow したLINEユーザーの連携をサロン内で解除する。
+     */
+    public function unlinkByLineUserId(int $salonId, string $lineUserId): void
+    {
+        Customer::withTrashed()
+            ->where('salon_id', $salonId)
+            ->where('line_user_id', $lineUserId)
+            ->update(Customer::lineColumnsCleared());
+    }
+
+    /**
+     * LINE連携解除時に当該サロンの顧客のLINE系カラムを一括クリアする。
+     */
+    public function clearLineColumnsBySalon(int $salonId): void
+    {
+        Customer::withTrashed()
+            ->where('salon_id', $salonId)
+            ->update(Customer::lineColumnsCleared());
     }
 }

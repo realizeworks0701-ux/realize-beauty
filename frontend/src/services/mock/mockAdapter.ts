@@ -5,10 +5,14 @@ import type {
   BusinessHoursUpdateInput,
   Customer,
   CustomerInput,
+  LineSetting,
+  LineSettingUpdateInput,
   Menu,
   MenuCreateInput,
   MenuUpdateInput,
   Photo,
+  PublicBooking,
+  PublicReservationRequest,
   RecordCreateInput,
   RecordUpdateInput,
   Reservation,
@@ -17,7 +21,10 @@ import type {
   TreatmentRecord,
 } from '@/types'
 import { toIsoWithOffset } from '@/utils/format'
+import { isWithinBookingWindow, listSlotStartMinutes, slotToIso } from '@/utils/publicBooking'
 import {
+  MOCK_BOOKING_SLUG,
+  MOCK_SALON_NAME,
   buildMockReservations,
   mockBusinessHours,
   mockCustomers,
@@ -34,11 +41,26 @@ import {
 
 const DELAY_MS = 250
 
+/** LINE連携設定のモック保持値（平文。API 応答時のみマスクする） */
+interface MockLineSetting {
+  channel_id: string
+  channel_secret: string
+  channel_access_token: string
+  bot_user_id: string | null
+  bot_basic_id: string | null
+  bot_display_name: string | null
+  is_active: boolean
+  connected_at: string | null
+  last_webhook_at: string | null
+}
+
 let customers: Customer[] = structuredClone(mockCustomers)
 let records: TreatmentRecord[] = structuredClone(mockRecords)
 let menus: Menu[] = structuredClone(mockMenus)
 let businessHours: BusinessHour[] = structuredClone(mockBusinessHours)
 let reservations: Reservation[] = buildMockReservations()
+// モックは未設定状態から開始する（保存 → 接続確認 → 解除の一連の流れを確認できる）
+let lineSetting: MockLineSetting | null = null
 let nextCustomerId = customers.length + 1
 let nextRecordId = records.length + 1
 let nextBlockId = 100
@@ -145,6 +167,94 @@ const sortedMenus = (): Menu[] =>
 const sortedBusinessHours = (): BusinessHour[] =>
   [...businessHours].sort((a, b) => a.day_of_week - b.day_of_week)
 
+// ---- 公開Web予約用ヘルパー ----
+
+/** booking_token → 予約ID（公開予約で発行したトークンのみ参照可能） */
+const publicBookingTokens = new Map<string, number>()
+
+const conflictError = (config: InternalAxiosRequestConfig, message: string): never => {
+  throw new AxiosError(
+    'Conflict',
+    'ERR_BAD_REQUEST',
+    config,
+    null,
+    respond(config, { message }, 409),
+  )
+}
+
+const randomFrom = (chars: string, length: number): string =>
+  Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('')
+
+const randomBookingToken = (): string =>
+  randomFrom('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 32)
+
+/** 連携コード（A-Z / 2-9 から I・O を除く6文字） */
+const randomLinkCode = (): string => randomFrom('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6)
+
+/** phone の正規化（ハイフン・空白除去、全角→半角） */
+const normalizePhone = (phone: string): string =>
+  phone
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[-\s‐－ー]/g, '')
+
+/** 行が存在しない曜日はデフォルト（09:00〜19:00 営業）で補完する */
+const businessHourOf = (dayOfWeek: number): BusinessHour =>
+  businessHours.find((hour) => hour.day_of_week === dayOfWeek) ?? {
+    day_of_week: dayOfWeek,
+    is_closed: false,
+    open_time: '09:00',
+    close_time: '19:00',
+  }
+
+const isStaffFree = (userId: number, startMs: number, endMs: number): boolean =>
+  !hasDoubleBooking(userId, startMs, endMs, null)
+
+const toPublicBooking = (reservation: Reservation): PublicBooking => ({
+  salon_name: MOCK_SALON_NAME,
+  menu_name: reservation.menu.name,
+  staff_name: reservation.user.name,
+  start_at: reservation.start_at,
+  end_at: reservation.end_at,
+  status: reservation.status,
+  can_cancel:
+    reservation.status === 'reserved' && Date.now() < new Date(reservation.start_at).getTime(),
+})
+
+// ---- LINE連携設定用ヘルパー ----
+
+const mask = (value: string): string => `****${value.slice(-4)}`
+
+const webhookUrl = (): string => `${window.location.origin}/api/line/webhook`
+
+const toLineSettingResponse = (): LineSetting =>
+  lineSetting === null
+    ? {
+        configured: false,
+        channel_id: null,
+        channel_secret: null,
+        channel_access_token: null,
+        bot_user_id: null,
+        bot_basic_id: null,
+        bot_display_name: null,
+        is_active: false,
+        connected_at: null,
+        last_webhook_at: null,
+        webhook_url: webhookUrl(),
+      }
+    : {
+        configured: true,
+        channel_id: lineSetting.channel_id,
+        channel_secret: mask(lineSetting.channel_secret),
+        channel_access_token: mask(lineSetting.channel_access_token),
+        bot_user_id: lineSetting.bot_user_id,
+        bot_basic_id: lineSetting.bot_basic_id,
+        bot_display_name: lineSetting.bot_display_name,
+        is_active: lineSetting.is_active,
+        connected_at: lineSetting.connected_at,
+        last_webhook_at: lineSetting.last_webhook_at,
+        webhook_url: webhookUrl(),
+      }
+
 export function installMockAdapter(instance: AxiosInstance): void {
   instance.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
     await delay()
@@ -238,9 +348,7 @@ export function installMockAdapter(instance: AxiosInstance): void {
     if (customerRecordsMatch) {
       const customerId = Number(customerRecordsMatch[1])
       if (method === 'get') {
-        const list = records
-          .filter((r) => r.customer.id === customerId)
-          .map(recordSummary)
+        const list = records.filter((r) => r.customer.id === customerId).map(recordSummary)
         return respond(config, paginate(list, config))
       }
       if (method === 'post') {
@@ -477,6 +585,7 @@ export function installMockAdapter(instance: AxiosInstance): void {
           start_at: input.start_at,
           end_at: toIsoWithOffset(new Date(endMs)),
           status: 'reserved',
+          source: 'staff',
           note: input.note ?? null,
           created_at: now,
           updated_at: now,
@@ -560,6 +669,303 @@ export function installMockAdapter(instance: AxiosInstance): void {
         reservations = reservations.filter((r) => r.id !== id)
         return respond(config, null, 204)
       }
+    }
+
+    // ---- LINE Settings ----
+    if (url === '/line-settings') {
+      if (method === 'get') {
+        return respond(config, { data: toLineSettingResponse() })
+      }
+      if (method === 'put') {
+        const input = parseBody<LineSettingUpdateInput>(config)
+        const errors: Record<string, string[]> = {}
+        if (!input.channel_id?.trim()) errors.channel_id = ['チャネルIDを入力してください。']
+        if (!input.channel_secret?.trim())
+          errors.channel_secret = ['チャネルシークレットを入力してください。']
+        if (!input.channel_access_token?.trim())
+          errors.channel_access_token = ['チャネルアクセストークンを入力してください。']
+        if (Object.keys(errors).length > 0) {
+          return validationError(config, errors)
+        }
+        // secret / token を変更した保存では接続確認をやり直す（is_active を落とす）
+        const credentialsChanged =
+          lineSetting === null ||
+          lineSetting.channel_secret !== input.channel_secret ||
+          lineSetting.channel_access_token !== input.channel_access_token
+        lineSetting = {
+          ...(lineSetting ?? {
+            bot_user_id: null,
+            bot_basic_id: null,
+            bot_display_name: null,
+            connected_at: null,
+            last_webhook_at: null,
+          }),
+          channel_id: input.channel_id,
+          channel_secret: input.channel_secret,
+          channel_access_token: input.channel_access_token,
+          is_active: credentialsChanged ? false : (lineSetting?.is_active ?? false),
+        }
+        return respond(config, { data: toLineSettingResponse() })
+      }
+      if (method === 'delete') {
+        if (lineSetting === null) return notFound(config)
+        lineSetting = null
+        return respond(config, null, 204)
+      }
+    }
+
+    if (method === 'post' && url === '/line-settings/verify') {
+      if (lineSetting === null) return notFound(config)
+      // モックの失敗確認用: アクセストークンに "invalid" を含む場合のみ接続確認を失敗させる
+      if (lineSetting.channel_access_token.includes('invalid')) {
+        return validationError(config, {
+          channel_access_token: ['LINEとの接続確認に失敗しました。'],
+        })
+      }
+      lineSetting = {
+        ...lineSetting,
+        bot_user_id: 'U4af4980629abcdef1234567890abcdef',
+        bot_basic_id: '@000rbmock',
+        bot_display_name: `${MOCK_SALON_NAME} 公式`,
+        is_active: true,
+        connected_at: toIsoWithOffset(new Date()),
+      }
+      return respond(config, { data: toLineSettingResponse() })
+    }
+
+    // ---- Booking Page ----
+    if (method === 'get' && url === '/booking-page') {
+      return respond(config, {
+        data: {
+          booking_slug: MOCK_BOOKING_SLUG,
+          booking_page_url: `${window.location.origin}/booking/${MOCK_BOOKING_SLUG}`,
+        },
+      })
+    }
+
+    // ---- Public Booking（/api/public/v1 系。publicApiClient から利用） ----
+    const publicSalonMatch = url.match(/^\/salons\/([a-z0-9]+)$/)
+    if (method === 'get' && publicSalonMatch) {
+      if (publicSalonMatch[1] !== MOCK_BOOKING_SLUG) return notFound(config)
+      return respond(config, {
+        data: {
+          name: MOCK_SALON_NAME,
+          business_hours: sortedBusinessHours(),
+          menus: sortedMenus()
+            .filter((menu) => menu.is_active)
+            .map(({ id, name, price, duration_minutes }) => ({
+              id,
+              name,
+              price,
+              duration_minutes,
+            })),
+          staff: mockStaffUsers.map(({ id, name }) => ({ id, name })),
+        },
+      })
+    }
+
+    const availabilityMatch = url.match(/^\/salons\/([a-z0-9]+)\/availability$/)
+    if (method === 'get' && availabilityMatch) {
+      if (availabilityMatch[1] !== MOCK_BOOKING_SLUG) return notFound(config)
+      const menu = menus.find((m) => m.id === Number(config.params?.menu_id) && m.is_active)
+      if (!menu) {
+        return validationError(config, { menu_id: ['指定したメニューは利用できません。'] })
+      }
+      const userId = config.params?.user_id != null ? Number(config.params.user_id) : null
+      const candidates =
+        userId !== null ? mockStaffUsers.filter((u) => u.id === userId) : mockStaffUsers
+      if (candidates.length === 0) {
+        return validationError(config, { user_id: ['指定したスタッフは選択できません。'] })
+      }
+      const [year = 0, month = 0, day = 0] = String(config.params?.date ?? '')
+        .split('-')
+        .map(Number)
+      if (!year || !month || !day) {
+        return validationError(config, { date: ['日付の形式が正しくありません。'] })
+      }
+      const date = new Date(year, month - 1, day)
+      const data = listSlotStartMinutes(businessHourOf(date.getDay()), menu.duration_minutes)
+        .map((min) => slotToIso(date, min))
+        .filter((iso) => isWithinBookingWindow(new Date(iso)))
+        .filter((iso) => {
+          const startMs = new Date(iso).getTime()
+          const endMs = startMs + menu.duration_minutes * 60000
+          return candidates.some((u) => isStaffFree(u.id, startMs, endMs))
+        })
+        .map((start_at) => ({ start_at }))
+      return respond(config, { data })
+    }
+
+    const publicReservationMatch = url.match(/^\/salons\/([a-z0-9]+)\/reservations$/)
+    if (method === 'post' && publicReservationMatch) {
+      if (publicReservationMatch[1] !== MOCK_BOOKING_SLUG) return notFound(config)
+      const input = parseBody<PublicReservationRequest>(config)
+
+      const customerErrors: Record<string, string[]> = {}
+      if (!input.name?.trim()) customerErrors.name = ['お名前を入力してください。']
+      else if (input.name.length > 100)
+        customerErrors.name = ['お名前は100文字以内で入力してください。']
+      if (!input.kana?.trim()) customerErrors.kana = ['フリガナを入力してください。']
+      else if (input.kana.length > 100)
+        customerErrors.kana = ['フリガナは100文字以内で入力してください。']
+      if (!input.phone?.trim()) customerErrors.phone = ['電話番号を入力してください。']
+      else if (input.phone.length > 20)
+        customerErrors.phone = ['電話番号は20文字以内で入力してください。']
+      if (Object.keys(customerErrors).length > 0) {
+        return validationError(config, customerErrors)
+      }
+
+      const menu = menus.find((m) => m.id === input.menu_id && m.is_active)
+      if (!menu) {
+        return validationError(config, { menu_id: ['指定したメニューは利用できません。'] })
+      }
+      const candidates =
+        input.user_id != null
+          ? mockStaffUsers.filter((u) => u.id === input.user_id)
+          : mockStaffUsers
+      if (candidates.length === 0) {
+        return validationError(config, { user_id: ['指定したスタッフは選択できません。'] })
+      }
+
+      const start = new Date(input.start_at)
+      if (Number.isNaN(start.getTime())) {
+        return validationError(config, { start_at: ['日時の形式が正しくありません。'] })
+      }
+      const startMinutes = start.getHours() * 60 + start.getMinutes()
+      const gridMinutes = listSlotStartMinutes(
+        businessHourOf(start.getDay()),
+        menu.duration_minutes,
+      )
+      if (!gridMinutes.includes(startMinutes)) {
+        return validationError(config, {
+          start_at: ['営業時間外のため、この日時にはご予約いただけません。'],
+        })
+      }
+      if (!isWithinBookingWindow(start)) {
+        return validationError(config, {
+          start_at: ['この日時はご予約いただけません。予約可能期間は60日先までです。'],
+        })
+      }
+
+      const normalizedPhone = normalizePhone(input.phone)
+      const futureReserved = reservations.filter(
+        (r) =>
+          r.status === 'reserved' &&
+          Date.now() < new Date(r.start_at).getTime() &&
+          r.customer.phone !== null &&
+          normalizePhone(r.customer.phone) === normalizedPhone,
+      ).length
+      if (futureReserved >= 3) {
+        return validationError(config, {
+          phone: ['同じ電話番号でのご予約が上限（3件）に達しています。'],
+        })
+      }
+
+      const startMs = start.getTime()
+      const endMs = startMs + menu.duration_minutes * 60000
+      const assigned = [...candidates]
+        .sort((a, b) => a.id - b.id)
+        .find((u) => isStaffFree(u.id, startMs, endMs))
+      if (!assigned) {
+        return validationError(config, {
+          start_at: ['指定した時間帯は埋まってしまいました。別の日時をお選びください。'],
+        })
+      }
+
+      // 顧客マッチング（phone 正規化・完全一致。複数一致時は id 最小、不一致なら新規作成）
+      let customer = customers
+        .filter((c) => c.phone !== null && normalizePhone(c.phone) === normalizedPhone)
+        .sort((a, b) => a.id - b.id)[0]
+      if (!customer) {
+        const nowIso = new Date().toISOString()
+        customer = {
+          id: nextCustomerId++,
+          name: input.name,
+          kana: input.kana,
+          gender: null,
+          birthday: null,
+          phone: input.phone,
+          email: null,
+          memo: null,
+          first_visit_at: null,
+          last_visit_at: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }
+        customers = [customer, ...customers]
+      }
+
+      const nowIso = toIsoWithOffset(new Date())
+      const reservation: Reservation = {
+        id: nextReservationId++,
+        customer: {
+          id: customer.id,
+          name: customer.name,
+          kana: customer.kana,
+          phone: customer.phone,
+        },
+        menu: {
+          id: menu.id,
+          name: menu.name,
+          price: menu.price,
+          duration_minutes: menu.duration_minutes,
+          is_active: menu.is_active,
+        },
+        user: { id: assigned.id, name: assigned.name },
+        start_at: input.start_at,
+        end_at: toIsoWithOffset(new Date(endMs)),
+        status: 'reserved',
+        source: 'web',
+        note: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      }
+      reservations = [...reservations, reservation]
+
+      const bookingToken = randomBookingToken()
+      publicBookingTokens.set(bookingToken, reservation.id)
+      return respond(
+        config,
+        {
+          data: {
+            booking_token: bookingToken,
+            start_at: reservation.start_at,
+            end_at: reservation.end_at,
+            menu_name: menu.name,
+            staff_name: assigned.name,
+            line: {
+              add_friend_url: 'https://line.me/R/ti/p/@000rbmock',
+              link_code: randomLinkCode(),
+            },
+          },
+        },
+        201,
+      )
+    }
+
+    const publicBookingMatch = url.match(/^\/bookings\/([A-Za-z0-9]{32})$/)
+    if (method === 'get' && publicBookingMatch) {
+      const reservationId = publicBookingTokens.get(publicBookingMatch[1] ?? '')
+      const reservation = reservations.find((r) => r.id === reservationId)
+      if (!reservation) return notFound(config)
+      return respond(config, { data: toPublicBooking(reservation) })
+    }
+
+    const publicCancelMatch = url.match(/^\/bookings\/([A-Za-z0-9]{32})\/cancel$/)
+    if (method === 'post' && publicCancelMatch) {
+      const reservationId = publicBookingTokens.get(publicCancelMatch[1] ?? '')
+      const reservation = reservations.find((r) => r.id === reservationId)
+      if (!reservation) return notFound(config)
+      // 条件付き UPDATE 相当: reserved かつ開始前のみキャンセル可、それ以外は 409
+      if (
+        reservation.status !== 'reserved' ||
+        Date.now() >= new Date(reservation.start_at).getTime()
+      ) {
+        return conflictError(config, 'この予約はキャンセルできません。')
+      }
+      reservation.status = 'cancelled'
+      reservation.updated_at = toIsoWithOffset(new Date())
+      return respond(config, { data: toPublicBooking(reservation) })
     }
 
     return notFound(config)

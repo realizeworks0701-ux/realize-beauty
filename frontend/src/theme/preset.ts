@@ -69,4 +69,13 @@ export const RealizePreset = definePreset(Aura, {
       },
     },
   },
+  components: {
+    // カレンダーのオーバーレイは不透明にする（content.background は半透明のため、
+    // 背後の予約枠が透けて見えてしまう）
+    datepicker: {
+      panel: {
+        background: '{surface.0}',
+      },
+    },
+  },
 })

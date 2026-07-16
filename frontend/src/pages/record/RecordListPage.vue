@@ -36,9 +36,7 @@ const headerTitle = computed(() =>
   customer.value ? `${customer.value.name} さんのカルテ` : 'カルテ一覧',
 )
 
-const showPaginator = computed(
-  () => meta.value !== null && meta.value.total > meta.value.per_page,
-)
+const showPaginator = computed(() => meta.value !== null && meta.value.total > meta.value.per_page)
 
 async function loadCustomer(): Promise<void> {
   loadingCustomer.value = true
@@ -134,12 +132,7 @@ onMounted(() => {
       :subtitle="loadingCustomer ? undefined : customer?.kana"
     >
       <template #actions>
-        <Button
-          label="顧客詳細へ"
-          icon="pi pi-arrow-left"
-          outlined
-          @click="goCustomerDetail"
-        />
+        <Button label="顧客詳細へ" icon="pi pi-arrow-left" outlined @click="goCustomerDetail" />
         <Button label="新規カルテ" icon="pi pi-plus" @click="goCreate" />
       </template>
     </PageHeader>
@@ -234,11 +227,7 @@ onMounted(() => {
   bottom: 14px;
   width: 2px;
   border-radius: 999px;
-  background: linear-gradient(
-    to bottom,
-    var(--rb-pink-soft),
-    var(--rb-pink-tint)
-  );
+  background: linear-gradient(to bottom, var(--rb-pink-soft), var(--rb-pink-tint));
 }
 
 .timeline-item {

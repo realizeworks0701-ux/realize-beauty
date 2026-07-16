@@ -64,11 +64,7 @@ function confirmLogout(): void {
 
 <template>
   <div class="rb-page">
-    <PageHeader
-      title="設定"
-      icon="pi pi-cog"
-      subtitle="アカウント情報の確認と管理を行えます"
-    />
+    <PageHeader title="設定" icon="pi pi-cog" subtitle="アカウント情報の確認と管理を行えます" />
 
     <div class="settings-body">
       <GlassCard title="アカウント" icon="pi pi-user">
@@ -128,6 +124,14 @@ function confirmLogout(): void {
             <span class="salon-link-body">
               <span class="salon-link-title">営業時間設定</span>
               <span class="salon-link-description">曜日別の営業時間・定休日の設定</span>
+            </span>
+            <i class="pi pi-angle-right salon-link-arrow" />
+          </RouterLink>
+          <RouterLink to="/settings/line" class="salon-link">
+            <span class="salon-link-icon"><i class="pi pi-comments" /></span>
+            <span class="salon-link-body">
+              <span class="salon-link-title">LINE連携</span>
+              <span class="salon-link-description">LINE公式アカウントの接続・Web予約ページURL</span>
             </span>
             <i class="pi pi-angle-right salon-link-arrow" />
           </RouterLink>

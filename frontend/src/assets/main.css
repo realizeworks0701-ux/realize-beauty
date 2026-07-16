@@ -148,7 +148,11 @@ h3 {
 }
 
 .p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-link).p-button-primary,
-.p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-link):not([class*='p-button-sec']):not([class*='p-button-dan']):not([class*='p-button-warn']):not([class*='p-button-help']):not([class*='p-button-info']):not([class*='p-button-succ']):not([class*='p-button-contrast']) {
+.p-button:not(.p-button-outlined):not(.p-button-text):not(.p-button-link):not(
+    [class*='p-button-sec']
+  ):not([class*='p-button-dan']):not([class*='p-button-warn']):not([class*='p-button-help']):not(
+    [class*='p-button-info']
+  ):not([class*='p-button-succ']):not([class*='p-button-contrast']) {
   background: var(--rb-gradient-brand);
   border: none;
   box-shadow: 0 4px 14px rgba(216, 108, 138, 0.35);

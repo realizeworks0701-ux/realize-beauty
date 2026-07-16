@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,9 @@ class Reservation extends Model
         'start_at',
         'end_at',
         'status',
+        'source',
+        'booking_token',
+        'reminder_sent_at',
         'note',
     ];
 
@@ -27,6 +31,15 @@ class Reservation extends Model
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'status' => ReservationStatus::class,
+        'source' => ReservationSource::class,
+        'reminder_sent_at' => 'datetime',
+    ];
+
+    /**
+     * DBのカラムデフォルトと揃え、insert 直後のモデルでも source を参照可能にする。
+     */
+    protected $attributes = [
+        'source' => 'staff',
     ];
 
     public function salon(): BelongsTo

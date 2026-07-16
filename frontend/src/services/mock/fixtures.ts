@@ -14,6 +14,10 @@ import { toIsoWithOffset } from '@/utils/format'
  * 開発用モックデータ（VITE_USE_MOCK=true のときのみ使用）
  */
 
+/** 公開予約ページ用のモックサロン（/booking/{slug} で参照する16文字英数小文字） */
+export const MOCK_BOOKING_SLUG = 'rbmocksalon00001'
+export const MOCK_SALON_NAME = 'Realize Beauty 表参道'
+
 export const mockUser: User = {
   id: 1,
   name: '山田 太郎',
@@ -153,8 +157,18 @@ export const mockRecords: TreatmentRecord[] = [
     ai_summary:
       'カラーリタッチとトリートメントを実施。前回よりも明るめの8トーンへ調整。次回は6週間後のリタッチと集中トリートメントを提案。',
     blocks: [
-      { id: 1, label: '施術内容', content: 'カラーリタッチ（8トーン アッシュブラウン）＋トリートメント', sort_order: 0 },
-      { id: 2, label: '使用薬剤', content: 'イルミナカラー オーシャン 8 / オキシ3%', sort_order: 1 },
+      {
+        id: 1,
+        label: '施術内容',
+        content: 'カラーリタッチ（8トーン アッシュブラウン）＋トリートメント',
+        sort_order: 0,
+      },
+      {
+        id: 2,
+        label: '使用薬剤',
+        content: 'イルミナカラー オーシャン 8 / オキシ3%',
+        sort_order: 1,
+      },
       { id: 3, label: '放置時間', content: '25分', sort_order: 2 },
       { id: 4, label: '次回提案', content: '6週間後リタッチ＋集中トリートメント', sort_order: 3 },
     ],
@@ -171,7 +185,12 @@ export const mockRecords: TreatmentRecord[] = [
     ai_summary: null,
     blocks: [
       { id: 5, label: '施術内容', content: 'カット＋フルカラー', sort_order: 0 },
-      { id: 6, label: 'カウンセリング', content: '毛先のダメージが気になるとのこと。ホームケアにオイルを提案。', sort_order: 1 },
+      {
+        id: 6,
+        label: 'カウンセリング',
+        content: '毛先のダメージが気になるとのこと。ホームケアにオイルを提案。',
+        sort_order: 1,
+      },
     ],
     photos: [photoSeed(3, null, 0)],
     created_at: '2026-05-24T12:30:00+09:00',
@@ -185,7 +204,12 @@ export const mockRecords: TreatmentRecord[] = [
     visited_at: '2026-07-07T10:00:00+09:00',
     ai_summary: null,
     blocks: [
-      { id: 7, label: 'デザイン', content: 'ワンカラー（くすみピンク）＋ラメグラデーション', sort_order: 0 },
+      {
+        id: 7,
+        label: 'デザイン',
+        content: 'ワンカラー（くすみピンク）＋ラメグラデーション',
+        sort_order: 0,
+      },
       { id: 8, label: '使用カラー', content: 'PK-04 / GL-11', sort_order: 1 },
       { id: 9, label: 'パーツ', content: 'ゴールドスタッズ 小 ×6', sort_order: 2 },
     ],
@@ -275,6 +299,7 @@ export const buildMockReservations = (): Reservation[] => [
     start_at: todayAt(10, 0),
     end_at: todayAt(11, 0),
     status: 'reserved',
+    source: 'staff',
     note: null,
     created_at: todayAt(9, 0),
     updated_at: todayAt(9, 0),
@@ -287,6 +312,7 @@ export const buildMockReservations = (): Reservation[] => [
     start_at: todayAt(13, 0),
     end_at: todayAt(14, 30),
     status: 'visited',
+    source: 'web',
     note: '前回より明るめのカラー希望',
     created_at: todayAt(9, 0),
     updated_at: todayAt(9, 0),
@@ -299,6 +325,7 @@ export const buildMockReservations = (): Reservation[] => [
     start_at: todayAt(10, 30),
     end_at: todayAt(11, 30),
     status: 'cancelled',
+    source: 'web',
     note: '体調不良のためキャンセル',
     created_at: todayAt(9, 0),
     updated_at: todayAt(9, 30),

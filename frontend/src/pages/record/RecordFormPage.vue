@@ -82,9 +82,7 @@ onMounted(async () => {
       ),
       life: 3000,
     })
-    await router.replace(
-      isEdit.value ? { name: 'dashboard' } : { name: 'customer-list' },
-    )
+    await router.replace(isEdit.value ? { name: 'dashboard' } : { name: 'customer-list' })
     return
   } finally {
     loading.value = false
@@ -445,13 +443,7 @@ async function handleFileSelected(event: Event): Promise<void> {
 
       <GlassCard>
         <div class="form-actions">
-          <Button
-            label="キャンセル"
-            text
-            severity="secondary"
-            :disabled="saving"
-            @click="cancel"
-          />
+          <Button label="キャンセル" text severity="secondary" :disabled="saving" @click="cancel" />
           <Button
             label="下書き保存"
             icon="pi pi-save"

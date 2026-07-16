@@ -1,0 +1,228 @@
+LineSetting:
+  type: object
+  description: >
+    LINE連携設定。
+    channel_secret / channel_access_token はマスク表示（末尾4文字のみ）で返し、平文は返さない。
+    認証情報が未登録の場合は configured=false となり、認証情報系フィールドは null。
+    webhook_url は設定の有無にかかわらず常に返す。
+
+  required:
+    - configured
+    - is_active
+    - webhook_url
+
+  properties:
+
+    configured:
+      type: boolean
+      description: 認証情報（channel_id / channel_secret / channel_access_token）が登録済みか
+      example: true
+
+    channel_id:
+      type: string
+      nullable: true
+      description: Messaging API チャネルID
+      example: "1234567890"
+
+    channel_secret:
+      type: string
+      nullable: true
+      description: チャネルシークレット（マスク表示。末尾4文字のみ）
+      example: "****7f3a"
+
+    channel_access_token:
+      type: string
+      nullable: true
+      description: 長期チャネルアクセストークン（マスク表示。末尾4文字のみ）
+      example: "****Qz8k"
+
+    bot_user_id:
+      type: string
+      nullable: true
+      description: bot のユーザーID。接続確認時に LINE API から取得（webhook の destination 照合キー）
+      example: "U4af4980629abcdef1234567890abcdef"
+
+    bot_basic_id:
+      type: string
+      nullable: true
+      description: bot のベーシックID（友だち追加URL `https://line.me/R/ti/p/{basicId}` 用）
+      example: "@123abcd"
+
+    bot_display_name:
+      type: string
+      nullable: true
+      description: bot の表示名。接続確認時に GET /v2/bot/info の displayName から取得し、設定画面で常時表示する
+      example: "Realize Beauty 表参道"
+
+    is_active:
+      type: boolean
+      description: 接続確認済みフラグ（接続確認成功で true）
+      example: true
+
+    connected_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: 接続確認日時
+      example: "2026-07-15T10:00:00+09:00"
+
+    last_webhook_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: >
+        最終Webhook受信日時（署名検証に成功した webhook 受信時のみ更新）。
+        接続確認（bot info）では channel_access_token しか検証できないため、
+        channel_secret の正しさはこの値の更新（実 webhook 受信）でのみ確認できる
+      example: "2026-07-15T12:34:56+09:00"
+
+    webhook_url:
+      type: string
+      description: LINE Developers コンソールに設定する Webhook URL（`{APP_URL}/api/line/webhook`・全サロン共通）
+      example: "https://example.com/api/line/webhook"
+
+########################################################
+
+LineSettingResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/LineSetting"
+
+########################################################
+
+UpdateLineSettingRequest:
+  type: object
+  description: >
+    LINE認証情報の保存リクエスト（1サロン1設定の upsert）。
+    値はDBに暗号化保存される。
+    channel_secret / channel_access_token を変更した場合は is_active=false に戻り、
+    再度の接続確認（POST /line-settings/verify）が必要（is_active は接続確認でのみ true になる）。
+
+  required:
+    - channel_id
+    - channel_secret
+    - channel_access_token
+
+  properties:
+
+    channel_id:
+      type: string
+      description: Messaging API チャネルID
+      example: "1234567890"
+
+    channel_secret:
+      type: string
+      description: チャネルシークレット（平文で送信し、サーバ側で暗号化保存）
+      example: "d41d8cd98f00b204e9800998ecf87f3a"
+
+    channel_access_token:
+      type: string
+      description: 長期チャネルアクセストークン（平文で送信し、サーバ側で暗号化保存）
+      example: "AbCdEfGhIjKlMnOpQrStUvWxYz+0123456789Qz8k="
+
+########################################################
+
+BookingPage:
+  type: object
+  description: Web予約ページ情報（salons.booking_slug から生成）
+
+  required:
+    - booking_slug
+    - booking_page_url
+
+  properties:
+
+    booking_slug:
+      type: string
+      description: 公開予約ページのslug（16文字英数小文字ランダム。再生成〈ローテーション〉APIはフェーズ2スコープ外・当面はサポートによる手動更新）
+      example: "a1b2c3d4e5f6g7h8"
+
+    booking_page_url:
+      type: string
+      description: 公開予約ページの完全URL（`/booking/{booking_slug}`）
+      example: "https://example.com/booking/a1b2c3d4e5f6g7h8"
+
+########################################################
+
+BookingPageResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/BookingPage"
+
+########################################################
+
+LineWebhookRequest:
+  type: object
+  description: LINE プラットフォームから送信される Webhook リクエストボディ
+
+  required:
+    - destination
+    - events
+
+  properties:
+
+    destination:
+      type: string
+      description: 送信先 bot のユーザーID（line_settings.bot_user_id と照合してサロンを特定する）
+      example: "U4af4980629abcdef1234567890abcdef"
+
+    events:
+      type: array
+      description: Webhook イベントの配列（follow / message / unfollow を処理し、その他は無視する）
+      items:
+        type: object
+        description: >
+          Webhook イベント。処理で参照するフィールドのみ定義し、
+          LINE プラットフォームが送信するその他のフィールドは additionalProperties で許容する。
+        additionalProperties: true
+        required:
+          - type
+        properties:
+
+          type:
+            type: string
+            description: イベント種別（follow / message / unfollow を処理対象とする）
+            example: "message"
+
+          replyToken:
+            type: string
+            description: 応答メッセージ（reply）用トークン（follow / message イベントに含まれる。短命・単回使用）
+            example: "757913772c4646b784d4b7ce46d12671"
+
+          source:
+            type: object
+            additionalProperties: true
+            properties:
+
+              userId:
+                type: string
+                description: 送信元の LINE ユーザーID（連携成立時に customers.line_user_id へ保存する値）
+                example: "U1234567890abcdef1234567890abcdef"
+
+          message:
+            type: object
+            description: message イベントのメッセージ本体（type=text のみ処理する）
+            additionalProperties: true
+            properties:
+
+              type:
+                type: string
+                description: メッセージ種別（text のみ処理対象）
+                example: "text"
+
+              text:
+                type: string
+                description: メッセージ本文（連携コードの照合に使用）
+                example: "K7M2P9"

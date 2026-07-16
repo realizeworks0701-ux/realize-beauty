@@ -1,0 +1,319 @@
+PublicSalon:
+  type: object
+  description: 公開予約ページ用のサロン情報（認証なしで返すため最小限の項目のみ）
+
+  required:
+    - name
+    - business_hours
+    - menus
+    - staff
+
+  properties:
+
+    name:
+      type: string
+      description: サロン名
+      example: Realize Beauty 表参道
+
+    business_hours:
+      type: array
+      description: 曜日別の営業時間（常に7件、day_of_week 0〜6。DBに行が存在しない曜日は「09:00〜19:00 営業」のデフォルト値で補完する）
+      minItems: 7
+      maxItems: 7
+
+      items:
+        $ref: "./business-hour.yaml#/BusinessHour"
+
+    menus:
+      type: array
+      description: 有効メニュー一覧（is_active=true のみ・display_order 昇順）
+
+      items:
+        $ref: "#/PublicMenu"
+
+    staff:
+      type: array
+      description: 有効スタッフ一覧（is_active=true のみ・id 昇順。返却項目は id / name のみ）
+
+      items:
+        $ref: "./user.yaml#/UserSummary"
+
+########################################################
+
+PublicSalonResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/PublicSalon"
+
+########################################################
+
+PublicMenu:
+  type: object
+  description: 公開予約ページ用のメニュー情報
+
+  required:
+    - id
+    - name
+    - price
+    - duration_minutes
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    name:
+      type: string
+      maxLength: 100
+      example: カット
+
+    price:
+      type: integer
+      description: 税込価格（円）
+      example: 5500
+
+    duration_minutes:
+      type: integer
+      minimum: 5
+      maximum: 480
+      description: 施術時間（分）
+      example: 60
+
+########################################################
+
+AvailabilitySlot:
+  type: object
+  description: 予約可能な空き枠（open_time 起点の30分刻み）
+
+  required:
+    - start_at
+
+  properties:
+
+    start_at:
+      type: string
+      format: date-time
+      description: 空き枠の開始日時（ISO 8601 オフセット付き）
+      example: "2026-07-20T10:00:00+09:00"
+
+########################################################
+
+AvailabilitySlotCollection:
+  type: object
+  description: 空き枠一覧レスポンス（空きがある枠のみ・start_at 昇順。休業日〈is_closed=true〉・予約可能範囲外は空配列）
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+
+      items:
+        $ref: "#/AvailabilitySlot"
+
+########################################################
+
+PublicReservationRequest:
+  type: object
+
+  required:
+    - menu_id
+    - start_at
+    - name
+    - kana
+    - phone
+
+  properties:
+
+    menu_id:
+      type: integer
+      description: メニューID（対象サロン・is_active=true のみ）
+      example: 1
+
+    user_id:
+      type: integer
+      nullable: true
+      description: 担当スタッフID（対象サロン・is_active=true のみ）。null / 省略時は「指名なし」（空いている有効スタッフのうち id 最小へ自動割当）
+      example: 1
+
+    start_at:
+      type: string
+      format: date-time
+      description: >
+        予約開始日時（ISO 8601 オフセット付き必須。管理側 POST /reservations と同じ date_format 検証）。
+        空き枠計算と同一の判定でサーバ側検証される:
+        該当曜日の営業時間内（欠損曜日はデフォルト 09:00〜19:00 で補完）かつ open_time 起点の30分グリッド上、
+        start_at + menu.duration_minutes <= close_time、
+        現在時刻+30分以降〜salon_timezone の日付で本日+60日後の終日まで。
+        違反時は 422（start_at キー）
+      example: "2026-07-20T10:00:00+09:00"
+
+    name:
+      type: string
+      maxLength: 100
+      description: 予約者名
+      example: 山田 花子
+
+    kana:
+      type: string
+      maxLength: 100
+      description: フリガナ
+      example: ヤマダ ハナコ
+
+    phone:
+      type: string
+      maxLength: 20
+      description: 電話番号（同一サロン内の既存顧客との照合キー。ハイフン・空白除去、全角→半角の正規化後に完全一致で照合し、複数一致時は id 最小の顧客に紐付ける）
+      example: "09012345678"
+
+########################################################
+
+LineLinkGuide:
+  type: object
+  description: 予約完了画面に表示する LINE 連携案内（友だち追加ボタン + ワンタイム連携コード）
+
+  required:
+    - add_friend_url
+    - link_code
+
+  properties:
+
+    add_friend_url:
+      type: string
+      description: 友だち追加URL（`https://line.me/R/ti/p/{basicId}`）
+      example: "https://line.me/R/ti/p/@123abcd"
+
+    link_code:
+      type: string
+      minLength: 6
+      maxLength: 6
+      description: ワンタイム連携コード（6文字。A-Z / 2-9 から I・O を除く。有効期限72時間・単回使用。Web予約のたびに新規生成され旧コードは即失効する）
+      example: "K7M2P9"
+
+########################################################
+
+PublicReservationResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - booking_token
+        - start_at
+        - end_at
+        - menu_name
+        - staff_name
+
+      properties:
+
+        booking_token:
+          type: string
+          minLength: 32
+          maxLength: 32
+          pattern: "^[A-Za-z0-9]{32}$"
+          description: 予約キャンセルページ用トークン（`/booking/cancel/{booking_token}`。`Str::random(32)` による英数大小32文字）
+          example: "Xk9mP2qR7sT4vW1yZ3aB5cD8eF6gH0jQ"
+
+        start_at:
+          type: string
+          format: date-time
+          example: "2026-07-20T10:00:00+09:00"
+
+        end_at:
+          type: string
+          format: date-time
+          description: start_at + menu.duration_minutes からサーバが導出
+          example: "2026-07-20T11:00:00+09:00"
+
+        menu_name:
+          type: string
+          example: カット
+
+        staff_name:
+          type: string
+          description: 担当スタッフ名（指名なしの場合は自動割当されたスタッフ）
+          example: 田中 美咲
+
+        line:
+          description: LINE連携案内。サロンの LINE連携が無効（未設定・接続未確認）または顧客が連携済みの場合は null
+          oneOf:
+            - $ref: "#/LineLinkGuide"
+            - type: "null"
+
+########################################################
+
+PublicBooking:
+  type: object
+  description: >
+    予約概要（キャンセルページ用）。
+    認証なしで返すため最小限の項目のみとし、顧客氏名等の個人情報は含めない
+    （キャンセルページの表示にはサロン名・メニュー名・担当スタッフ・日時・ステータスのみ使用する）。
+
+  required:
+    - salon_name
+    - menu_name
+    - staff_name
+    - start_at
+    - end_at
+    - status
+    - can_cancel
+
+  properties:
+
+    salon_name:
+      type: string
+      example: Realize Beauty 表参道
+
+    menu_name:
+      type: string
+      example: カット
+
+    staff_name:
+      type: string
+      example: 田中 美咲
+
+    start_at:
+      type: string
+      format: date-time
+      example: "2026-07-20T10:00:00+09:00"
+
+    end_at:
+      type: string
+      format: date-time
+      example: "2026-07-20T11:00:00+09:00"
+
+    status:
+      $ref: "./common.yaml#/ReservationStatus"
+
+    can_cancel:
+      type: boolean
+      description: キャンセル可能か（status=reserved かつ現在時刻が開始時刻より前〈now < start_at・等号不可〉）
+      example: true
+
+########################################################
+
+PublicBookingResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/PublicBooking"

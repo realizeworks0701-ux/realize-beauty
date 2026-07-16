@@ -32,6 +32,14 @@ tags:
     description: 予約管理
   - name: Users
     description: スタッフ（参照用）
+  - name: LineSettings
+    description: LINE連携設定
+  - name: BookingPage
+    description: Web予約ページ設定
+  - name: PublicBooking
+    description: 公開Web予約（認証なし・/api/public/v1）
+  - name: LineWebhook
+    description: LINE Webhook（/api/line/webhook）
 
 security:
   - bearerAuth: []
@@ -88,6 +96,41 @@ paths:
 
   /users:
     $ref: "./paths/users.yaml#/users"
+
+  /line-settings:
+    $ref: "./paths/line-settings.yaml#/lineSettings"
+
+  /line-settings/verify:
+    $ref: "./paths/line-settings.yaml#/lineSettingsVerify"
+
+  /booking-page:
+    $ref: "./paths/line-settings.yaml#/bookingPage"
+
+  # --- 公開Web予約API ---
+  # prefix は /api/public/v1（認証なし・throttle あり）。
+  # 各 path item 側の servers がルートの servers（/api/v1）を上書きする。
+
+  /salons/{booking_slug}:
+    $ref: "./paths/public-booking.yaml#/publicSalon"
+
+  /salons/{booking_slug}/availability:
+    $ref: "./paths/public-booking.yaml#/publicAvailability"
+
+  /salons/{booking_slug}/reservations:
+    $ref: "./paths/public-booking.yaml#/publicReservations"
+
+  /bookings/{booking_token}:
+    $ref: "./paths/public-booking.yaml#/publicBooking"
+
+  /bookings/{booking_token}/cancel:
+    $ref: "./paths/public-booking.yaml#/publicBookingCancel"
+
+  # --- LINE Webhook ---
+  # prefix は /api（認証なし・throttle なし・署名検証あり）。
+  # path item 側の servers がルートの servers（/api/v1）を上書きする。
+
+  /line/webhook:
+    $ref: "./paths/line-webhook.yaml#/lineWebhook"
 
 components:
 

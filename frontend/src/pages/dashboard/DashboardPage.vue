@@ -132,11 +132,7 @@ onMounted(async () => {
           <ul class="item-list">
             <li v-for="customer in summary.recent_customers" :key="customer.id">
               <RouterLink :to="`/customers/${customer.id}`" class="item-row">
-                <Avatar
-                  :label="customer.name.charAt(0)"
-                  shape="circle"
-                  class="item-avatar beige"
-                />
+                <Avatar :label="customer.name.charAt(0)" shape="circle" class="item-avatar beige" />
                 <div class="item-body">
                   <span class="item-title">{{ customer.name }}</span>
                   <span class="item-sub">

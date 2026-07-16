@@ -1,0 +1,38 @@
+# LINE Webhook（LINE プラットフォーム専用・prefix /api）
+# path item の servers でルートの /api/v1 を上書きする。
+
+lineWebhook:
+  servers:
+    - url: http://localhost/api
+      description: LINE Webhook（Local Development）
+  post:
+    tags:
+      - LineWebhook
+    summary: LINE Webhook受信
+    security: []
+    description: >
+      LINE プラットフォーム専用の受信エンドポイント（全サロン共通の1本・認証なし・throttle なし）。
+      リクエストボディの destination（bot user ID）でサロンを特定し、
+      該当サロンの channel_secret で x-line-signature を検証する（HMAC-SHA256・raw body）。
+      未知の destination は署名計算前に即 200 を返す（DB 照会1回のみ・ログ記録）。
+      署名検証失敗でもレスポンスは常に 200 を返す（LINE 側のリトライ暴走防止。検証失敗はログに記録する）。
+      署名検証はキュー投入前に同期実施し、検証済みイベントのみキューへ投入する。
+      署名検証成功時は line_settings.last_webhook_at を更新する（設定画面の「最終Webhook受信」表示用）。
+      イベント処理（follow / message.text=連携コード / unfollow）はキュー経由で非同期に行う。
+    operationId: receiveLineWebhook
+    parameters:
+      - name: x-line-signature
+        in: header
+        required: true
+        description: channel_secret を鍵とした HMAC-SHA256 署名（Base64）
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/line-setting.yaml#/LineWebhookRequest"
+    responses:
+      '200':
+        description: "受信成功（署名検証失敗・未知の destination を含め常に 200）"

@@ -1,0 +1,266 @@
+# 公開Web予約API（認証なし・prefix /api/public/v1）
+# 各 path item の servers でルートの /api/v1 を上書きする。
+
+publicSalon:
+  servers:
+    - url: http://localhost/api/public/v1
+      description: 公開API（Local Development）
+  parameters:
+    - name: booking_slug
+      in: path
+      required: true
+      description: サロンの公開予約slug（16文字英数小文字）
+      schema:
+        type: string
+  get:
+    tags:
+      - PublicBooking
+    summary: 公開サロン情報取得
+    security: []
+    description: >
+      認証不要の公開API。サロン名・営業時間・有効メニュー一覧・有効スタッフ一覧（id / name のみ）を返す。
+      サロンの検索条件には is_active=true を含める（無効サロンは 404）。
+      throttle 60回/分/IP（超過時 429）。
+    operationId: getPublicSalon
+    responses:
+      '200':
+        description: "公開サロン情報取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/public-booking.yaml#/PublicSalonResponse"
+      '404':
+        description: "booking_slug に一致する有効なサロン（is_active=true）が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '429':
+        description: "レート制限超過（60回/分/IP）"
+
+publicAvailability:
+  servers:
+    - url: http://localhost/api/public/v1
+      description: 公開API（Local Development）
+  parameters:
+    - name: booking_slug
+      in: path
+      required: true
+      description: サロンの公開予約slug（16文字英数小文字）
+      schema:
+        type: string
+  get:
+    tags:
+      - PublicBooking
+    summary: 空き枠取得
+    security: []
+    description: >
+      認証不要の公開API。指定日の30分刻みの空き枠を返す（空きがある枠のみ・start_at 昇順）。
+      営業時間の open_time を起点に30分刻みで salon_timezone 基準で走査し（09:15 開店なら 09:15, 09:45, …）、
+      「start + menu.duration_minutes <= close_time」かつ対象スタッフに重複予約（cancelled / no_show を除く）が
+      ない枠を空きとする。business_hours に行が存在しない曜日はデフォルト（09:00〜19:00 営業）で補完し、
+      休業日は is_closed=true の曜日のみ。user_id 省略時は「指名なし」＝有効スタッフの誰か1人でも空いていれば可。
+      予約可能範囲は現在時刻+30分以降〜60日先まで。休業日・予約可能範囲外の日付は空配列を返す。
+      throttle 60回/分/IP（超過時 429）。
+    operationId: listPublicAvailability
+    parameters:
+      - name: date
+        in: query
+        required: true
+        description: 対象日（YYYY-MM-DD、salon_timezone 基準）
+        schema:
+          type: string
+          format: date
+      - name: menu_id
+        in: query
+        required: true
+        description: メニューID（対象サロン・is_active=true のみ）
+        schema:
+          type: integer
+      - name: user_id
+        in: query
+        description: 担当スタッフID。省略時は「指名なし」
+        schema:
+          type: integer
+    responses:
+      '200':
+        description: "空き枠取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/public-booking.yaml#/AvailabilitySlotCollection"
+      '404':
+        description: "booking_slug に一致する有効なサロン（is_active=true）が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー（日付形式不正・無効なメニュー / スタッフ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+      '429':
+        description: "レート制限超過（60回/分/IP）"
+
+publicReservations:
+  servers:
+    - url: http://localhost/api/public/v1
+      description: 公開API（Local Development）
+  parameters:
+    - name: booking_slug
+      in: path
+      required: true
+      description: サロンの公開予約slug（16文字英数小文字）
+      schema:
+        type: string
+  post:
+    tags:
+      - PublicBooking
+    summary: 公開予約登録
+    security: []
+    description: >
+      認証不要の公開API。Web予約を登録する。
+      start_at は ISO 8601 オフセット付き必須（管理側 POST /reservations と同じ date_format 検証）。
+      加えて、start_at は空き枠計算（availability）と同一の判定でサーバ側検証する:
+      (1) 該当曜日の営業時間内（欠損曜日はデフォルト 09:00〜19:00 で補完）かつ open_time 起点の30分グリッド上
+      (2) start_at + menu.duration_minutes <= close_time
+      (3) 現在時刻+30分以降かつ salon_timezone の日付で本日+60日後の終日まで
+      (4) 対象スタッフに重複なし（advisory lock 経由）。
+      いずれかに違反する場合（営業時間外・休業日・30分グリッド外を含む）は 422。
+      管理側 /api/v1 の予約 API は従来どおり営業時間外も許容する（ADR-023 の決定を維持）。
+      end_at は start_at + menu.duration_minutes からサーバが導出する。
+      user_id 省略時は空いている有効スタッフのうち id 最小へ自動割当（全候補が埋まっていれば 422）。
+      二重予約防止は管理側と同じ advisory lock を通し、枠が埋まっている場合は 422。
+      422 のエラーキーは、時間帯系（枠埋まり・営業時間外・グリッド外・範囲外）= start_at、
+      顧客情報系 = name / kana / phone に割り当てる（同一 phone の未来予約上限超過も phone キー）。
+      顧客は同一サロン内の phone 完全一致（未削除。ハイフン・空白除去、全角→半角の正規化後に照合）で
+      既存顧客に紐付け（name / kana は上書きしない）、複数一致時は id 最小の顧客に紐付け、
+      不一致なら新規作成する。
+      同一サロン内で同一 phone（正規化後）の未来の status=reserved 予約が既に3件ある場合は 422
+      （虚偽予約による枠占拠の緩和）。
+      レスポンスの line はサロンの LINE連携が有効かつ顧客が未連携の場合のみ返す（それ以外は null）。
+      throttle 10回/分/IP、加えてサロン（booking_slug）単位 30回/分（超過時 429）。
+    operationId: createPublicReservation
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/public-booking.yaml#/PublicReservationRequest"
+    responses:
+      '201':
+        description: "公開予約登録成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/public-booking.yaml#/PublicReservationResponse"
+      '404':
+        description: "booking_slug に一致する有効なサロン（is_active=true）が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー（start_at が空き枠計算で有効な枠に一致しない場合〈枠が埋まっている・営業時間外・休業日・30分グリッド外・予約可能範囲外〉・無効なメニュー / スタッフ・同一 phone の未来の reserved 予約が既に3件、を含む）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+      '429':
+        description: "レート制限超過（10回/分/IP または サロン〈booking_slug〉単位 30回/分）"
+
+publicBooking:
+  servers:
+    - url: http://localhost/api/public/v1
+      description: 公開API（Local Development）
+  parameters:
+    - name: booking_token
+      in: path
+      required: true
+      description: Web予約時に発行される予約トークン（`Str::random(32)` による英数大小32文字）
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 32
+        pattern: "^[A-Za-z0-9]{32}$"
+  get:
+    tags:
+      - PublicBooking
+    summary: 公開予約概要取得
+    security: []
+    description: >
+      認証不要の公開API。booking_token に対応する予約概要を返す（キャンセルページ用）。
+      認証なしで返すため顧客氏名等の個人情報は含めない。
+      予約の所属サロンが無効（is_active=false）の場合も 404。
+      throttle 60回/分/IP（超過時 429）。
+    operationId: getPublicBooking
+    responses:
+      '200':
+        description: "公開予約概要取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/public-booking.yaml#/PublicBookingResponse"
+      '404':
+        description: "booking_token に一致する予約が存在しない（所属サロンが無効の場合を含む）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '429':
+        description: "レート制限超過（60回/分/IP）"
+
+publicBookingCancel:
+  servers:
+    - url: http://localhost/api/public/v1
+      description: 公開API（Local Development）
+  parameters:
+    - name: booking_token
+      in: path
+      required: true
+      description: Web予約時に発行される予約トークン（`Str::random(32)` による英数大小32文字）
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 32
+        pattern: "^[A-Za-z0-9]{32}$"
+  post:
+    tags:
+      - PublicBooking
+    summary: 公開予約キャンセル
+    security: []
+    description: >
+      認証不要の公開API。booking_token に対応する予約をキャンセルする（status を cancelled に変更）。
+      キャンセル可能なのは status=reserved かつ現在時刻が開始時刻より前（now < start_at・等号不可）の場合のみ。
+      status=reserved を WHERE に含む条件付き UPDATE で実装し、更新0件なら 409
+      （キャンセル済み・来店済み・開始時刻を過ぎた予約はすべて 409）。
+      予約の所属サロンが無効（is_active=false）の場合は 404。
+      throttle 10回/分/IP（超過時 429）。
+    operationId: cancelPublicBooking
+    responses:
+      '200':
+        description: "キャンセル成功（status=cancelled の予約概要を返す）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/public-booking.yaml#/PublicBookingResponse"
+      '404':
+        description: "booking_token に一致する予約が存在しない（所属サロンが無効の場合を含む）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '409':
+        description: "キャンセル不可（キャンセル済み・来店済み・開始時刻を過ぎている）"
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: この予約はキャンセルできません。
+      '429':
+        description: "レート制限超過（10回/分/IP）"

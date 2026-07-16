@@ -42,4 +42,9 @@ return [
         'timeout' => env('OPENAI_TIMEOUT', 30),
     ],
 
+    'line' => [
+        'base_url' => env('LINE_BASE_URL', 'https://api.line.me'),
+        'timeout' => env('LINE_TIMEOUT', 10),
+    ],
+
 ];
