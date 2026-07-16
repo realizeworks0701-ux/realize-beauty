@@ -145,9 +145,9 @@ const staffOptions = computed(() =>
   props.staff.map((user) => ({ label: user.name, value: user.id })),
 )
 
-const statusOptions = (
-  ['reserved', 'visited', 'cancelled', 'no_show'] as ReservationStatus[]
-).map((status) => ({ label: reservationStatusLabel(status), value: status }))
+const statusOptions = (['reserved', 'visited', 'cancelled', 'no_show'] as ReservationStatus[]).map(
+  (status) => ({ label: reservationStatusLabel(status), value: status }),
+)
 
 const noMenus = computed(() => !isEdit.value && props.menus.length === 0)
 
@@ -268,7 +268,8 @@ function confirmRemove(): void {
   const reservation = props.reservation
   if (!reservation || busy.value) return
   confirm.require({
-    message: 'この予約を削除しますか？誤登録の取り消し用の操作です（キャンセルはステータス変更をご利用ください）。',
+    message:
+      'この予約を削除しますか？誤登録の取り消し用の操作です（キャンセルはステータス変更をご利用ください）。',
     header: '予約の削除',
     icon: 'pi pi-exclamation-triangle',
     acceptLabel: '削除する',
@@ -483,13 +484,7 @@ function close(): void {
           :disabled="saving"
           @click="confirmRemove"
         />
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          outlined
-          :disabled="busy"
-          @click="close"
-        />
+        <Button label="キャンセル" severity="secondary" outlined :disabled="busy" @click="close" />
         <Button
           v-if="!noMenus"
           :label="isEdit ? '保存' : '登録'"

@@ -41,11 +41,7 @@ function confirmLogout(): void {
       </RouterLink>
       <div class="header-right">
         <div class="user-chip">
-          <Avatar
-            :label="auth.user?.name?.charAt(0) ?? '?'"
-            shape="circle"
-            class="user-avatar"
-          />
+          <Avatar :label="auth.user?.name?.charAt(0) ?? '?'" shape="circle" class="user-avatar" />
           <span class="user-name">{{ auth.user?.name ?? '' }}</span>
         </div>
         <Button

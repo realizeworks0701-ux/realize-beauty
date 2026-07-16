@@ -91,9 +91,11 @@ function openEdit(menu: Menu): void {
 function validate(): boolean {
   const errors: Record<string, string> = {}
   if (form.name.trim() === '') errors['name'] = 'メニュー名を入力してください'
-  else if (form.name.trim().length > 100) errors['name'] = 'メニュー名は100文字以内で入力してください'
+  else if (form.name.trim().length > 100)
+    errors['name'] = 'メニュー名は100文字以内で入力してください'
   if (form.price == null) errors['price'] = '価格を入力してください'
-  else if (form.price < 0 || form.price > 9999999) errors['price'] = '価格は0〜9,999,999円で入力してください'
+  else if (form.price < 0 || form.price > 9999999)
+    errors['price'] = '価格は0〜9,999,999円で入力してください'
   if (form.duration_minutes == null) errors['duration_minutes'] = '所要時間を入力してください'
   else if (form.duration_minutes < 5 || form.duration_minutes > 480) {
     errors['duration_minutes'] = '所要時間は5〜480分で入力してください'

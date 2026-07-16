@@ -175,7 +175,10 @@ function rowError(index: number): string {
             class="hours-row"
             :class="{ closed: row.is_closed, invalid: !!rowError(index) }"
           >
-            <span class="day-label" :class="{ sunday: row.day_of_week === 0, saturday: row.day_of_week === 6 }">
+            <span
+              class="day-label"
+              :class="{ sunday: row.day_of_week === 0, saturday: row.day_of_week === 6 }"
+            >
               {{ weekdayLabel(row.day_of_week) }}
             </span>
 

@@ -116,9 +116,7 @@ function goRecordCreate(): void {
 function birthdayText(target: Customer): string {
   if (!target.birthday) return '—'
   const age = calcAge(target.birthday)
-  return age == null
-    ? formatDate(target.birthday)
-    : `${formatDate(target.birthday)}（${age}歳）`
+  return age == null ? formatDate(target.birthday) : `${formatDate(target.birthday)}（${age}歳）`
 }
 </script>
 
@@ -197,12 +195,7 @@ function birthdayText(target: Customer): string {
                 >
                   <i class="pi pi-list" />カルテ一覧へ
                 </RouterLink>
-                <Button
-                  label="新規カルテ"
-                  icon="pi pi-plus"
-                  size="small"
-                  @click="goRecordCreate"
-                />
+                <Button label="新規カルテ" icon="pi pi-plus" size="small" @click="goRecordCreate" />
               </template>
 
               <div v-if="recordsLoading" class="skeleton-list">
