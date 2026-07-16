@@ -10,13 +10,16 @@ import {
 
 const day = new Date(2026, 6, 14) // 2026-07-14（火）
 
-function reservation(overrides: Partial<Reservation> & { start_at: string; end_at: string }): Reservation {
+function reservation(
+  overrides: Partial<Reservation> & { start_at: string; end_at: string },
+): Reservation {
   return {
     id: 1,
     customer: { id: 1, name: '山田 花子', kana: 'ヤマダ ハナコ', phone: null },
     menu: { id: 1, name: 'カット', price: 5500, duration_minutes: 60, is_active: true },
     user: { id: 1, name: '田中 美咲' },
     status: 'reserved',
+    source: 'staff',
     note: null,
     created_at: '2026-07-13T18:00:00+09:00',
     updated_at: '2026-07-13T18:00:00+09:00',

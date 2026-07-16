@@ -1,15 +1,41 @@
 <?php
 
+use App\Http\Controllers\Api\LineWebhookController;
+use App\Http\Controllers\Api\PublicV1\PublicAvailabilityController;
+use App\Http\Controllers\Api\PublicV1\PublicBookingController;
+use App\Http\Controllers\Api\PublicV1\PublicReservationController;
+use App\Http\Controllers\Api\PublicV1\PublicSalonController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BookingPageController;
 use App\Http\Controllers\Api\V1\BusinessHourController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\LineSettingController;
 use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\PhotoController;
 use App\Http\Controllers\Api\V1\RecordController;
 use App\Http\Controllers\Api\V1\ReservationController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
+
+// LINE Webhook（全サロン共通・認証なし・署名検証で保護）
+Route::post('/line/webhook', LineWebhookController::class);
+
+// 公開Web予約（認証なし・throttle 必須）
+Route::prefix('public/v1')->group(function () {
+
+    Route::middleware('throttle:public-booking-read')->group(function () {
+        Route::get('salons/{bookingSlug}', PublicSalonController::class);
+        Route::get('salons/{bookingSlug}/availability', PublicAvailabilityController::class);
+        Route::get('bookings/{bookingToken}', [PublicBookingController::class, 'show']);
+    });
+
+    Route::post('salons/{bookingSlug}/reservations', PublicReservationController::class)
+        ->middleware('throttle:public-booking-create');
+
+    Route::post('bookings/{bookingToken}/cancel', [PublicBookingController::class, 'cancel'])
+        ->middleware('throttle:public-booking-cancel');
+});
 
 Route::prefix('v1')->group(function () {
 
@@ -54,5 +80,14 @@ Route::prefix('v1')->group(function () {
 
         // Users
         Route::get('users', [UserController::class, 'index']);
+
+        // LINE Settings
+        Route::get('line-settings', [LineSettingController::class, 'show']);
+        Route::put('line-settings', [LineSettingController::class, 'update']);
+        Route::delete('line-settings', [LineSettingController::class, 'destroy']);
+        Route::post('line-settings/verify', [LineSettingController::class, 'verify']);
+
+        // Booking Page
+        Route::get('booking-page', [BookingPageController::class, 'show']);
     });
 });

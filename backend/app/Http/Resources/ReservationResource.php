@@ -31,6 +31,7 @@ class ReservationResource extends JsonResource
             'start_at' => $this->start_at->toIso8601String(),
             'end_at' => $this->end_at->toIso8601String(),
             'status' => $this->status->value,
+            'source' => $this->source->value,
             'note' => $this->note,
             'created_at' => $this->created_at->toIso8601String(),
             'updated_at' => $this->updated_at->toIso8601String(),

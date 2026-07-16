@@ -2,6 +2,9 @@ import type { MenuSummary } from './menu'
 
 export type ReservationStatus = 'reserved' | 'visited' | 'cancelled' | 'no_show'
 
+/** 予約の登録経路（staff=サロン側で登録、web=公開Web予約） */
+export type ReservationSource = 'staff' | 'web'
+
 export interface ReservationCustomerSummary {
   id: number
   name: string
@@ -22,6 +25,7 @@ export interface Reservation {
   start_at: string
   end_at: string
   status: ReservationStatus
+  source: ReservationSource
   note: string | null
   created_at: string
   updated_at: string

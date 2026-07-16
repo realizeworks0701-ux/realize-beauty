@@ -80,6 +80,32 @@ const router = createRouter({
       component: () => import('@/pages/settings/BusinessHoursSettingsPage.vue'),
     },
     {
+      path: '/settings/line',
+      name: 'settings-line',
+      component: () => import('@/pages/settings/LineSettingsPage.vue'),
+    },
+    // ---- 公開ルート（認証ガード対象外。顧客向けのため管理画面へは誘導しない） ----
+    {
+      path: '/booking/cancel/:token',
+      name: 'public-booking-cancel',
+      component: () => import('@/pages/public/BookingCancelPage.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/booking/:slug',
+      name: 'public-booking',
+      component: () => import('@/pages/public/BookingPage.vue'),
+      meta: { public: true },
+    },
+    {
+      // /booking 配下の不正パスは公開用の「ページが見つかりません」に落とす
+      // （既存のキャッチオール → /dashboard → /login に流さない）
+      path: '/booking/:pathMatch(.*)*',
+      name: 'public-not-found',
+      component: () => import('@/pages/public/PublicNotFoundPage.vue'),
+      meta: { public: true },
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/dashboard',
     },

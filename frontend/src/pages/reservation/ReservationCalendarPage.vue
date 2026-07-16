@@ -137,7 +137,11 @@ const displayRange = computed(() =>
 
 const slots = computed(() => {
   const list: { min: number; isHour: boolean }[] = []
-  for (let min = displayRange.value.startMin; min < displayRange.value.endMin; min += SLOT_MINUTES) {
+  for (
+    let min = displayRange.value.startMin;
+    min < displayRange.value.endMin;
+    min += SLOT_MINUTES
+  ) {
     list.push({ min, isHour: min % 60 === 0 })
   }
   return list
@@ -318,7 +322,16 @@ function onDeleted(): void {
               }"
               @click.stop="openEdit(block.reservation)"
             >
-              <span class="block-customer">{{ block.reservation.customer.name }}</span>
+              <span class="block-head">
+                <span class="block-customer">{{ block.reservation.customer.name }}</span>
+                <span
+                  v-if="block.reservation.source === 'web'"
+                  class="block-source"
+                  title="Web予約から登録された予約"
+                >
+                  WEB
+                </span>
+              </span>
               <template v-if="!block.compact">
                 <span class="block-menu">{{ block.reservation.menu.name }}</span>
                 <span class="block-time">
@@ -538,13 +551,32 @@ function onDeleted(): void {
   background: rgba(203, 169, 109, 0.65);
 }
 
+.block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+}
+
 .block-customer {
   font-size: 0.78rem;
   font-weight: 700;
-  max-width: 100%;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.block-source {
+  flex-shrink: 0;
+  padding: 0 0.28rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--rb-pink-deep);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
 }
 
 .block-menu,
