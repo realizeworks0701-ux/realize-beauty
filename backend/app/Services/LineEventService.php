@@ -48,7 +48,8 @@ class LineEventService
             return;
         }
 
-        $code = strtoupper(trim($text));
+        // 全角スペース（U+3000）も trim 対象にする（booking.md「前後の空白を除去し大文字化して比較」）
+        $code = strtoupper(preg_replace('/^[\s\x{3000}]+|[\s\x{3000}]+$/u', '', $text));
 
         $customer = $this->customerRepository->findByActiveLineLinkCode($setting->salon_id, $code);
 

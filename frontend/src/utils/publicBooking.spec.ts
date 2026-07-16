@@ -3,6 +3,7 @@ import type { BusinessHour } from '@/types'
 import { toIsoWithOffset } from './format'
 import {
   bookingSelectableRange,
+  buildBookingPageUrl,
   buildCancelUrl,
   calcEndAtIso,
   formatDateTimeRange,
@@ -101,6 +102,14 @@ describe('buildCancelUrl', () => {
   it('オリジンとトークンからキャンセルURLを組み立てる', () => {
     expect(buildCancelUrl('https://example.com', 'abcDEF123')).toBe(
       'https://example.com/booking/cancel/abcDEF123',
+    )
+  })
+})
+
+describe('buildBookingPageUrl', () => {
+  it('オリジンと booking_slug から予約ページURLを組み立てる', () => {
+    expect(buildBookingPageUrl('https://example.com', 'a1b2c3d4e5f6g7h8')).toBe(
+      'https://example.com/booking/a1b2c3d4e5f6g7h8',
     )
   })
 })

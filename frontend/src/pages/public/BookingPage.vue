@@ -38,6 +38,7 @@ const bookingSlug = computed(() => String(route.params.slug ?? ''))
 
 type LoadState = 'loading' | 'ready' | 'notFound' | 'error'
 const loadState = ref<LoadState>('loading')
+const loadErrorMessage = ref('')
 const salon = ref<PublicSalon | null>(null)
 
 async function fetchSalon(): Promise<void> {
@@ -47,7 +48,12 @@ async function fetchSalon(): Promise<void> {
     loadState.value = 'ready'
   } catch (error) {
     const status = error instanceof AxiosError ? error.response?.status : undefined
-    loadState.value = status === 404 ? 'notFound' : 'error'
+    if (status === 404) {
+      loadState.value = 'notFound'
+      return
+    }
+    loadErrorMessage.value = status === 429 ? THROTTLE_MESSAGE : 'ページを読み込めませんでした'
+    loadState.value = 'error'
   }
 }
 
@@ -255,7 +261,7 @@ async function copyText(text: string, label: string): Promise<void> {
 
     <div v-else-if="loadState === 'error'" class="glass-card state-card load-error">
       <i class="pi pi-exclamation-triangle" />
-      <p>ページを読み込めませんでした</p>
+      <p>{{ loadErrorMessage }}</p>
       <Button label="再読み込み" icon="pi pi-refresh" outlined @click="fetchSalon" />
     </div>
 

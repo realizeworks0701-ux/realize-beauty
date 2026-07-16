@@ -103,6 +103,9 @@ class PublicBookingService
         $phone = self::normalizePhone($data['phone']);
 
         return DB::transaction(function () use ($salon, $menu, $requestedUserId, $startAt, $endAt, $phone, $data) {
+            // ロック取得順は常に phone → スタッフ（assignStaff）とする（逆順の混在は deadlock を招く）
+            $this->reservationRepository->lockForPhoneBooking($salon->id, $phone);
+
             $this->assertPhoneReservationLimit($salon->id, $phone);
 
             $customer = $this->resolveCustomer($salon->id, $phone, $data);

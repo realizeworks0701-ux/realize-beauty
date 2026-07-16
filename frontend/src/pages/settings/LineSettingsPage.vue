@@ -12,6 +12,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { lineSettingsService } from '@/services/lineSettingsService'
 import { extractErrorMessage, extractFieldErrors } from '@/utils/apiError'
 import { formatDateTime } from '@/utils/format'
+import { buildBookingPageUrl } from '@/utils/publicBooking'
 import type { BookingPage, LineSetting } from '@/types'
 
 const toast = useToast()
@@ -172,6 +173,13 @@ async function verify(): Promise<void> {
 }
 
 // ---- URL コピー ----
+
+/** SPA と API は別オリジンのため、booking_page_url（APP_URL 起点）ではなく booking_slug から組み立てる */
+const bookingPageUrl = computed(() =>
+  bookingPage.value
+    ? buildBookingPageUrl(window.location.origin, bookingPage.value.booking_slug)
+    : '',
+)
 
 async function copy(value: string, label: string): Promise<void> {
   try {
@@ -372,13 +380,13 @@ function confirmDisconnect(): void {
 
         <GlassCard title="Web予約ページURL" icon="pi pi-globe">
           <div class="url-row">
-            <code class="url-value">{{ bookingPage?.booking_page_url }}</code>
+            <code class="url-value">{{ bookingPageUrl }}</code>
             <Button
               icon="pi pi-copy"
               severity="secondary"
               outlined
               aria-label="Web予約ページURL をコピー"
-              @click="copy(bookingPage?.booking_page_url ?? '', 'Web予約ページURL')"
+              @click="copy(bookingPageUrl, 'Web予約ページURL')"
             />
           </div>
           <p class="url-note">リッチメニュー・Instagram・Googleマップ等に掲載してください</p>

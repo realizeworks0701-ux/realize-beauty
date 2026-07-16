@@ -56,7 +56,8 @@ GET /api/v1/line-settings の結果に応じて3状態を表示する。
 
 ### Web予約ページURL
 
-* GET /api/v1/booking-page で取得した公開URL（`{APP_URL}/booking/{booking_slug}`）を読み取り専用表示＋コピーButton
+* GET /api/v1/booking-page で取得した `booking_slug` から、フロントエンド（SPA）のオリジン基準で `{SPAオリジン}/booking/{booking_slug}` を組み立てて読み取り専用表示＋コピーButton
+* レスポンスの `booking_page_url` はバックエンド APP_URL 起点のため表示・コピーには使わない（本番は SPA と API が別オリジンで、顧客が開けないURLになる）。Webhook URL はバックエンドで受けるため APP_URL 起点のままで正しい
 * 「リッチメニュー・Instagram・Googleマップ等に掲載してください」の説明を添える
 * このセクションは LINE 連携の設定状態に関わらず常に表示する（Web予約自体はLINEなしでも利用可能）
 

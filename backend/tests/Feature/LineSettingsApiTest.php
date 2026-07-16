@@ -173,6 +173,64 @@ class LineSettingsApiTest extends TestCase
         $this->assertFalse($setting->fresh()->is_active);
     }
 
+    public function test_verify_returns_422_when_connection_fails(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/info' => Http::failedConnection(),
+        ]);
+
+        $user = $this->actingAsSalonUser();
+        $setting = LineSetting::factory()->unverified()->for($user->salon)->create();
+
+        // タイムアウト等の接続失敗も 500 ではなく 422 に揃える
+        $this->postJson('/api/v1/line-settings/verify')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['channel_access_token']);
+
+        $this->assertFalse($setting->fresh()->is_active);
+    }
+
+    public function test_verify_returns_422_when_bot_info_response_is_malformed(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/info' => Http::response(['unexpected' => 'shape']),
+        ]);
+
+        $user = $this->actingAsSalonUser();
+        $setting = LineSetting::factory()->unverified()->for($user->salon)->create();
+
+        $this->postJson('/api/v1/line-settings/verify')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['channel_access_token']);
+
+        $this->assertFalse($setting->fresh()->is_active);
+    }
+
+    public function test_verify_returns_422_when_channel_is_used_by_another_salon(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/info' => Http::response([
+                'userId' => 'U-shared-bot',
+                'basicId' => '@shared',
+                'displayName' => '共有チャネル',
+            ]),
+        ]);
+
+        LineSetting::factory()->for(Salon::factory())->create(['bot_user_id' => 'U-shared-bot']);
+
+        $user = $this->actingAsSalonUser();
+        $setting = LineSetting::factory()->unverified()->for($user->salon)->create();
+
+        // bot_user_id の unique 制約違反（500）ではなく 422 で返す
+        $this->postJson('/api/v1/line-settings/verify')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['channel_access_token']);
+
+        $setting->refresh();
+        $this->assertFalse($setting->is_active);
+        $this->assertNull($setting->bot_user_id);
+    }
+
     public function test_verify_returns_404_when_not_configured(): void
     {
         $this->actingAsSalonUser();

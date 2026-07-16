@@ -23,6 +23,19 @@ class ReservationRepository
         );
     }
 
+    /**
+     * 同一サロン・同一 phone（正規化後）のWeb予約書き込みを直列化する。
+     * 上限チェック〜顧客作成の間の競合（上限バイパス・重複顧客作成）を防ぐ。
+     * トランザクション内で呼ぶこと（終了時に自動解放）。
+     */
+    public function lockForPhoneBooking(int $salonId, string $normalizedPhone): void
+    {
+        DB::select(
+            'select pg_advisory_xact_lock(hashtextextended(?, 0))',
+            ["booking-phone:{$salonId}:{$normalizedPhone}"],
+        );
+    }
+
     public function listBetween(int $salonId, Carbon $from, Carbon $toExclusive, array $filters): Collection
     {
         return Reservation::where('salon_id', $salonId)

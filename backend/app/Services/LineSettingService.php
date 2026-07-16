@@ -61,8 +61,15 @@ class LineSettingService
             ]);
         }
 
+        // bot_user_id の unique 制約違反（500）を事前検出して 422 に揃える
+        if ($this->lineSettingRepository->existsForOtherSalon($salonId, $botInfo['userId'])) {
+            throw ValidationException::withMessages([
+                'channel_access_token' => ['この LINE 公式アカウントは既に別のサロンで連携されています。'],
+            ]);
+        }
+
         return $this->lineSettingRepository->update($setting, [
-            'bot_user_id' => $botInfo['userId'] ?? null,
+            'bot_user_id' => $botInfo['userId'],
             'bot_basic_id' => $botInfo['basicId'] ?? null,
             'bot_display_name' => $botInfo['displayName'] ?? null,
             'is_active' => true,

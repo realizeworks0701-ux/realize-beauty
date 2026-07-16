@@ -154,7 +154,7 @@ class CustomerRepository
         Customer::withTrashed()
             ->where('salon_id', $salonId)
             ->where('line_user_id', $lineUserId)
-            ->update($this->lineColumnsCleared());
+            ->update(Customer::lineColumnsCleared());
     }
 
     /**
@@ -164,16 +164,6 @@ class CustomerRepository
     {
         Customer::withTrashed()
             ->where('salon_id', $salonId)
-            ->update($this->lineColumnsCleared());
-    }
-
-    private function lineColumnsCleared(): array
-    {
-        return [
-            'line_user_id' => null,
-            'line_linked_at' => null,
-            'line_link_code' => null,
-            'line_link_code_expires_at' => null,
-        ];
+            ->update(Customer::lineColumnsCleared());
     }
 }

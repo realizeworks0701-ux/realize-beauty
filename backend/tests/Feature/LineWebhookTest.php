@@ -87,8 +87,9 @@ class LineWebhookTest extends TestCase
             'events' => [['type' => 'follow', 'replyToken' => 'rt-follow', 'source' => ['userId' => 'U-user']]],
         ], self::CHANNEL_SECRET)->assertOk();
 
-        Http::assertSent(function ($request) {
+        Http::assertSent(function ($request) use ($setting) {
             return str_contains($request->url(), '/v2/bot/message/reply')
+                && $request->hasHeader('Authorization', 'Bearer '.$setting->channel_access_token)
                 && $request['replyToken'] === 'rt-follow'
                 && str_contains($request['messages'][0]['text'], '連携コード');
         });
@@ -113,6 +114,54 @@ class LineWebhookTest extends TestCase
         $this->assertNull($customer->line_link_code_expires_at);
 
         // 確認 reply には予約詳細を含めない
+        Http::assertSent(function ($request) use ($setting) {
+            return str_contains($request->url(), '/v2/bot/message/reply')
+                && $request->hasHeader('Authorization', 'Bearer '.$setting->channel_access_token)
+                && str_contains($request['messages'][0]['text'], '連携が完了しました');
+        });
+    }
+
+    public function test_message_code_wrapped_in_full_width_spaces_links_customer(): void
+    {
+        Http::fake();
+        $setting = $this->createLineSetting();
+        $customer = $this->createCustomerWithCode($setting->salon, 'K7M2P9');
+
+        // 全角スペース（U+3000）で囲まれたコードも trim して照合される
+        $this->postWebhook([
+            'destination' => $setting->bot_user_id,
+            'events' => [$this->textMessageEvent('U-line-user', '　k7m2p9　')],
+        ], self::CHANNEL_SECRET)->assertOk();
+
+        $this->assertSame('U-line-user', $customer->fresh()->line_user_id);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/v2/bot/message/reply')
+                && str_contains($request['messages'][0]['text'], '連携が完了しました');
+        });
+    }
+
+    public function test_soft_deleted_customer_does_not_block_relinking_same_line_user(): void
+    {
+        Http::fake();
+        $setting = $this->createLineSetting();
+        $deleted = Customer::factory()->for($setting->salon)->create([
+            'line_user_id' => 'U-line-user',
+            'line_linked_at' => now(),
+        ]);
+        $deleted->delete();
+
+        $customer = $this->createCustomerWithCode($setting->salon, 'K7M2P9');
+
+        $this->postWebhook([
+            'destination' => $setting->bot_user_id,
+            'events' => [$this->textMessageEvent('U-line-user', 'K7M2P9')],
+        ], self::CHANNEL_SECRET)->assertOk();
+
+        // 論理削除時にLINE系カラムがクリアされ、部分 unique index (salon_id, line_user_id) と衝突しない
+        $this->assertNull($deleted->fresh()->line_user_id);
+        $this->assertSame('U-line-user', $customer->fresh()->line_user_id);
+
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/v2/bot/message/reply')
                 && str_contains($request['messages'][0]['text'], '連携が完了しました');
@@ -174,8 +223,9 @@ class LineWebhookTest extends TestCase
         $this->assertNull($target->line_user_id);
         $this->assertNotNull($target->line_link_code);
 
-        Http::assertSent(function ($request) {
+        Http::assertSent(function ($request) use ($setting) {
             return str_contains($request->url(), '/v2/bot/message/reply')
+                && $request->hasHeader('Authorization', 'Bearer '.$setting->channel_access_token)
                 && str_contains($request['messages'][0]['text'], '既に連携済み');
         });
     }

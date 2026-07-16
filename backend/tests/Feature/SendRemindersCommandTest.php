@@ -33,9 +33,30 @@ class SendRemindersCommandTest extends TestCase
 
         Http::assertSent(function ($request) use ($reservation) {
             return str_contains($request->url(), '/v2/bot/message/push')
+                && $request->hasHeader('Authorization', 'Bearer '.$reservation->salon->lineSetting->channel_access_token)
                 && $request['to'] === $reservation->customer->line_user_id
                 && str_contains($request['messages'][0]['text'], '明日のご予約');
         });
+    }
+
+    public function test_sends_each_reminder_with_its_own_salon_token(): void
+    {
+        Http::fake();
+        $first = $this->createReminderTarget();
+        $second = $this->createReminderTarget();
+
+        $this->artisan('reservations:send-reminders')->assertSuccessful();
+
+        Http::assertSentCount(2);
+
+        // 各 push は自サロンのトークン・自顧客宛てで送られる（テナント間の混線なし）
+        foreach ([$first, $second] as $reservation) {
+            Http::assertSent(function ($request) use ($reservation) {
+                return str_contains($request->url(), '/v2/bot/message/push')
+                    && $request->hasHeader('Authorization', 'Bearer '.$reservation->salon->lineSetting->channel_access_token)
+                    && $request['to'] === $reservation->customer->line_user_id;
+            });
+        }
     }
 
     public function test_dispatches_jobs_only_for_target_reservations(): void
@@ -85,6 +106,18 @@ class SendRemindersCommandTest extends TestCase
         $this->artisan('reservations:send-reminders')->assertSuccessful();
 
         Http::assertSentCount(1);
+    }
+
+    public function test_unique_job_is_dispatched_once_when_command_reruns_before_processing(): void
+    {
+        Queue::fake();
+        $this->createReminderTarget();
+
+        // ジョブ処理前の再実行では ShouldBeUnique の lock により二重投入されない
+        $this->artisan('reservations:send-reminders')->assertSuccessful();
+        $this->artisan('reservations:send-reminders')->assertSuccessful();
+
+        Queue::assertPushed(SendReservationReminderJob::class, 1);
     }
 
     public function test_job_skips_when_reservation_cancelled_before_sending(): void

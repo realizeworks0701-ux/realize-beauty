@@ -11,8 +11,10 @@ use App\Models\Menu;
 use App\Models\Reservation;
 use App\Models\Salon;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\CreatesPublicBookingSalon;
@@ -266,6 +268,37 @@ class PublicReservationApiTest extends TestCase
         $this->assertSame($customer->id, Reservation::sole()->customer_id);
     }
 
+    public function test_matches_existing_customer_with_full_width_symbol_phone(): void
+    {
+        [$salon] = $this->createContext();
+        $customer = Customer::factory()->for($salon)->create(['phone' => '０３（１２３４）５６７８']);
+
+        $fullWidth = $this->book($salon, ['phone' => '０３（１２３４）５６７８']);
+        $halfWidth = $this->book($salon, ['start_at' => '2026-07-22T10:00:00+09:00', 'phone' => '03(1234)5678']);
+
+        $fullWidth->assertCreated();
+        $halfWidth->assertCreated();
+
+        // 全角・半角いずれの入力でも既存顧客へ突合され、重複顧客は作成されない
+        $this->assertSame(1, Customer::where('salon_id', $salon->id)->count());
+        $this->assertSame([$customer->id], Reservation::query()->pluck('customer_id')->unique()->all());
+    }
+
+    public function test_counts_future_reservation_limit_across_phone_notations(): void
+    {
+        [$salon, $menu, $staff] = $this->createContext();
+        $customer = Customer::factory()->for($salon)->create(['phone' => '０３（１２３４）５６７８']);
+
+        foreach (['2026-07-22T10:00:00+09:00', '2026-07-23T10:00:00+09:00', '2026-07-24T10:00:00+09:00'] as $startAt) {
+            $this->reserve($salon, $staff, $menu, $startAt, customer: $customer);
+        }
+
+        $response = $this->book($salon, ['phone' => '03(1234)5678']);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('phone');
+    }
+
     public function test_matches_smallest_id_when_multiple_customers_share_phone(): void
     {
         [$salon] = $this->createContext();
@@ -333,6 +366,26 @@ class PublicReservationApiTest extends TestCase
         $response = $this->book($salon, ['phone' => '09012345678']);
 
         $response->assertCreated();
+    }
+
+    public function test_acquires_phone_lock_before_staff_lock(): void
+    {
+        [$salon, , $staff] = $this->createContext();
+
+        $lockKeys = [];
+        DB::listen(function (QueryExecuted $query) use (&$lockKeys) {
+            if (str_contains($query->sql, 'pg_advisory_xact_lock')) {
+                $lockKeys[] = $query->bindings[0];
+            }
+        });
+
+        $this->book($salon)->assertCreated();
+
+        // 同一 phone の同時リクエストを直列化する advisory lock をスタッフロックより先に取得する
+        $this->assertSame([
+            "booking-phone:{$salon->id}:09012345678",
+            "reservation:{$salon->id}:{$staff->id}",
+        ], $lockKeys);
     }
 
     public function test_issues_line_link_code_when_line_is_active_and_customer_is_not_linked(): void

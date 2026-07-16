@@ -21,6 +21,16 @@ class LineSettingRepository
         return LineSetting::where('bot_user_id', $botUserId)->first();
     }
 
+    /**
+     * 同一 bot_user_id が他サロンで連携済みか（unique 制約違反の事前検出用）。
+     */
+    public function existsForOtherSalon(int $salonId, string $botUserId): bool
+    {
+        return LineSetting::where('bot_user_id', $botUserId)
+            ->where('salon_id', '!=', $salonId)
+            ->exists();
+    }
+
     public function find(int $id): ?LineSetting
     {
         return LineSetting::find($id);

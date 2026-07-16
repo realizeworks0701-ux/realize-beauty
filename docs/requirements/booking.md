@@ -165,6 +165,8 @@ UI を介さない直接のAPI呼び出しでも不正な枠の予約が通ら�
 4. 対象スタッフに重複予約がないこと（advisory lock 経由。指名なしは Business Rules 3 を参照）
 5. 同一サロン内で同一 phone（正規化後）の未来の status=reserved 予約が既に3件ある場合は新規作成不可（虚偽予約による枠占拠の緩和）
 
+同一 phone の同時リクエストは salon_id+正規化 phone の advisory lock（`booking-phone:{salonId}:{phone}`）で直列化する（上限バイパス・重複顧客作成の防止。取得順は phone → スタッフ）。
+
 422 のエラーキー割当（決定事項）: 顧客情報のエラーは name / kana / phone キー（同一 phone の未来予約上限超過も phone キー）、時間帯系（枠埋まり・営業時間外・グリッド外・範囲外）は start_at キーでサーバメッセージを返す。UI は start_at 系エラーでサーバメッセージを表示し、空き枠を再取得して日時選択ステップへ戻す。
 
 なお管理側（`/api/v1`）の予約APIは従来どおり営業時間外の登録も許容する（[ADR-023](../decisions/ADR-023-reservation-core.md) の決定を維持。変更しない）。

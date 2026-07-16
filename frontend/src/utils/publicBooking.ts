@@ -68,3 +68,8 @@ export function formatDateTimeRange(startAtIso: string, endAtIso: string): strin
 export function buildCancelUrl(origin: string, bookingToken: string): string {
   return `${origin}/booking/cancel/${bookingToken}`
 }
+
+/** Web予約ページの完全URL（SPA と API は別オリジンのため、フロントエンドの origin から組み立てる） */
+export function buildBookingPageUrl(origin: string, bookingSlug: string): string {
+  return `${origin}/booking/${bookingSlug}`
+}
