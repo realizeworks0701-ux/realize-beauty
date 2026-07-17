@@ -31,6 +31,7 @@ Realize Beautyは美容サロン向け業務支援システムである。
 | address | string | 住所 |
 | business_hours | text | nullable, **deprecated**（自由記述。`business_hours` テーブルへ移行。削除はしない） |
 | booking_slug | string | nullable, Unique。公開Web予約ページURL用の16文字英数小文字ランダム（フェーズ2 Web予約で追加）。新規サロンは Salon モデルの creating フックで自動生成（unique 衝突時はリトライ）。マイグレーションで既存サロンにもバックフィルし、以後は NOT NULL 相当で運用。再生成（ローテーション）はスコープ外（当面はサポートによる手動更新） |
+| google_calendar_mode | string | nullable。per_staff / shared（フェーズ3 Googleカレンダー同期で追加）。null = 未設定（同期を使わない）。モード変更時は当該サロンの `google_calendar_connections` をすべて解除する |
 | is_active | boolean | default true |
 | created_at | timestamp | |
 | updated_at | timestamp | |
@@ -145,6 +146,8 @@ Salon
 ├── Menus
 ├── BusinessHours
 ├── LineSetting（1:1）
+├── GoogleCalendarConnections
+│   └── GoogleBusyBlocks
 └── RecordBlockTemplates
 ```
 ---
@@ -222,6 +225,7 @@ Salon
 | source | string | staff / web, default 'staff'（フェーズ2 Web予約で追加） |
 | booking_token | string | nullable, Unique（unique index）。Web予約時のみ生成（キャンセルページURL用）。CSPRNG 由来の `Str::random(32)`（英数大小32文字、128bit 超のエントロピー）で生成する |
 | reminder_sent_at | timestamptz | nullable。前日リマインダー送信日時（フェーズ2 LINE連携で追加） |
+| google_event_id | string | nullable, index。送信同期で作成した Google カレンダーイベントのID（フェーズ3 Googleカレンダー同期で追加）。未同期・対象接続なしの場合は null。**受信同期での RB 由来イベントの確定はこのカラムとの `(salon_id, google_event_id)` 突合で行う**（per_staff モードでは担当 `user_id` も一致すること）。Google 側の `extendedProperties.private.rb_reservation_id` マーカーは判定の権威ではない（後述） |
 | note | text | nullable |
 | created_at | timestamp | |
 | updated_at | timestamp | |
@@ -256,6 +260,77 @@ Salon
 
 ---
 
+# google_calendar_connections
+
+Googleカレンダーとの接続（フェーズ3 Googleカレンダー同期で追加）
+
+1接続 = 1 Google アカウントの1カレンダー。同一カレンダーに対して書き込み（RBの予約）と読み取り（RB以外の予定 = busy）の両方を行う。
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| salon_id | bigint | FK → salons.id |
+| user_id | bigint | nullable, FK → users.id。null = サロン共有接続（shared モード） |
+| google_account_email | string | 接続した Google アカウント（設定画面の表示用）。宣言スコープ（calendar.events + calendar.calendarlist.readonly）では userinfo を取得できないため、`calendarList` の primary エントリの `id`（= アカウントのメールアドレス）から取得する |
+| calendar_id | string | default 'primary'。対象カレンダー。接続後に calendarList から選び直せる。`primary` はエイリアスであり `calendarList` は実 id（メールアドレス）を返すため、値は「`primary` または calendarList に存在する id」を許容する（既定値 `primary` が自らの検証に違反しないため） |
+| access_token | text | **暗号化保存**（Laravel `encrypted` cast） |
+| refresh_token | text | **暗号化保存**（Laravel `encrypted` cast） |
+| token_expires_at | timestamptz | access_token の有効期限。期限切れ時は refresh_token で更新 |
+| sync_token | text | nullable。`events.list` の増分同期用 nextSyncToken（最終ページにのみ返るため、全ページ適用・コミット後に更新する）。syncToken は `timeMin` / `timeMax` と併用できず同期窓を紐づけられないため、窓を前に進めるには全同期が要る。全同期の契機は初回接続 / 対象カレンダー変更 / 410 Gone / 日次の同期窓前進の4つで、いずれも保存済み sync_token を破棄して取り直す |
+| channel_id | string | nullable, Unique。watch チャネルID（webhook の `X-Goog-Channel-ID` 照合キー）。推測・列挙されないよう CSPRNG 由来のランダム値で生成する（後述） |
+| channel_resource_id | string | nullable。`channels.stop` に必要な resourceId |
+| channel_token | string | nullable。webhook 検証用の秘密値（`X-Goog-Channel-Token` と照合）。認証なし webhook における唯一の検証手段のため生成方式を規定する（後述） |
+| channel_expires_at | timestamptz | nullable。チャネル有効期限。期限前に定期コマンドで張り直す（Google にチャネル更新 API は存在しないため、「更新」＝新しい `channel_id` で watch を張り直し、旧チャネルを `channels.stop` すること） |
+| last_synced_at | timestamptz | nullable。最終同期日時（設定画面に表示） |
+| status | string | default 'active'。active / needs_reconnect。refresh_token 失効・アクセス取消時は needs_reconnect にして再接続を促す |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- Soft Delete は採用しない。解除時は次の5手順で物理削除する（`channels.stop` → refresh_token の revoke → busy ブロック削除 → 対象範囲の予約の `google_event_id` を null クリア → 接続レコードの物理削除）。`channels.stop` / revoke の失敗は best-effort（ログのみで続行）とし、RB 側の削除は必ず完遂する。モード変更に伴う一括解除にも同じ副作用セットを適用する（正典は [requirements/google-calendar.md](../requirements/google-calendar.md) の接続節）
+- 接続解除では Google 側のイベントは削除しない（サロンの記録として残す）。対象カレンダー変更が旧カレンダーの RB 由来イベントを削除するのと**意図的に非対称**である（変更は同一アカウント内の移し替えであり、孤児イベントを残すと手動削除が生きた予約を cancelled にする事故経路になるため）
+- カレンダーの表示名（summary）は保持しない。設定画面は `primary` を「メインカレンダー（{google_account_email}）」、それ以外は `calendar_id` をそのまま表示する（名称は「カレンダーを変更」ダイアログの一覧で確認できるため、陳腐化する写しをDBに持たない）
+- トークン（access_token / refresh_token）と channel_token は API レスポンスに含めない
+- 部分 Unique Index 2種
+  - `(salon_id, user_id)` — `WHERE user_id IS NOT NULL`（per_staff モード: 1スタッフ1接続）
+  - `(salon_id)` — `WHERE user_id IS NULL`（shared モード: 1サロン1接続）
+- 対象カレンダー変更時は `sync_token` を破棄し、watch チャネルを張り直して busy ブロックを再構築する。あわせて旧カレンダーの RB 由来イベントを削除し、新カレンダーへ初回送信同期で書き直す
+
+---
+
+# google_busy_blocks
+
+Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計算用に取り込んだブロック（フェーズ3 Googleカレンダー同期で追加）
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| salon_id | bigint | FK → salons.id |
+| google_calendar_connection_id | bigint | FK → google_calendar_connections.id, **cascadeOnDelete()** |
+| user_id | bigint | nullable, FK → users.id。null = サロン全体を塞ぐ（shared モード） |
+| google_event_id | string | 取り込み元イベントID（upsert キー） |
+| start_at | timestamptz | 外部予定の開始日時 |
+| end_at | timestamptz | 外部予定の終了日時 |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- **イベントのタイトル・説明・出席者等の内容は一切保存しない**（開始・終了時刻のみ）
+  - 理由: スタッフの私用予定が対象であり、サロン側に予定の中身を見せる必要がない（プライバシー配慮）。空き枠計算に必要なのは時間帯だけである
+  - RB のカレンダーUI上は「外部予定」という固定表記でグレー表示する
+- busy ブロックにしないのは **RB 由来と確定したイベントのみ**。確定は `reservations` の `(salon_id, google_event_id)` 突合で行う（per_staff モードでは担当 `user_id` も一致すること）。`extendedProperties.private.rb_reservation_id` マーカーを持つだけで突合しないイベントは、外部予定として busy ブロックにする（後述）
+- busy から除外するイベントは次の3種
+  - `transparency=transparent`（予定ありにしない）
+  - `eventType` が `workingLocation`（勤務場所）/ `birthday`（連絡先の誕生日）— `primary` に流れる特殊イベントで、`singleEvents=true` により終日イベントとして展開されるため、取り込むと丸1日塞がる
+  - 接続アカウント本人の `responseStatus` が `declined`（辞退した会議）— 辞退済みでも `opaque` のまま残るため
+- 除外条件に該当するようになった場合は既存の busy ブロックを削除する（幽霊 busy を残さない）
+- 終日予定は `start.date` の salon_timezone 00:00 から `end.date`（**排他**）の salon_timezone 00:00 までを **1本の busy ブロック**として取り込む。連休・旅行・全体研修のように複数日にまたがる終日予定も **1レコード**で表現する（unique `(google_calendar_connection_id, google_event_id)` が日ごとの分割を禁じるため）
+- Google 側で削除・同期範囲外になった予定は busy ブロックも削除する（全同期は応答に削除イベントを含まないため、応答に現れなかった同期窓内の busy ブロックを照合削除する）
+- Soft Delete は採用しない（外部予定の写しであり、削除は物理削除）
+- 接続解除時は FK の cascade delete で自動的に消える
+- unique: `(google_calendar_connection_id, google_event_id)`
+- index: `(salon_id, start_at)`、`(user_id, start_at)`
+
+---
+
 # Index
 
 ## customers
@@ -283,6 +358,12 @@ Salon
 - (salon_id, start_at)
 - (salon_id, user_id, start_at)
 - customer_id
+- google_event_id（受信同期の `(salon_id, google_event_id)` 突合の逆引きに使う。検索は必ず salon_id で絞る）
+
+## google_busy_blocks
+
+- (salon_id, start_at)
+- (user_id, start_at)
 
 ---
 
@@ -314,6 +395,18 @@ Salon
 - salon_id
 - bot_user_id
 
+## google_calendar_connections
+
+- (salon_id, user_id) — 部分 Unique Index（`WHERE user_id IS NOT NULL`）。per_staff モードで1スタッフ1接続
+- (salon_id) — 部分 Unique Index（`WHERE user_id IS NULL`）。shared モードで1サロン1接続
+- channel_id — Unique（webhook の `X-Goog-Channel-ID` 照合キー）
+
+## google_busy_blocks
+
+- (google_calendar_connection_id, google_event_id) — Unique（受信同期の upsert キー。複数日にまたがる終日予定を日ごとに分割できないのはこの制約による）
+- (salon_id, start_at)
+- (user_id, start_at)
+
 ---
 
 # Foreign Keys
@@ -324,6 +417,12 @@ Salon
 - restrictOnDelete()
 
 誤って親データを削除してカルテが消えないようにする。
+
+例外
+
+- `google_busy_blocks.google_calendar_connection_id` は **cascadeOnDelete()** とする。
+  busy ブロックは接続が読み取った外部予定の写しにすぎず、接続解除後に残す意味がないため
+  （接続の解除は物理削除であり、残置すると空き枠を塞ぎ続ける孤児レコードになる）。
 
 ---
 
@@ -354,6 +453,20 @@ Laravel PHP Enumを採用する。
 - staff
 - web
 
+## GoogleCalendarMode
+
+`salons.google_calendar_mode`（null = 未設定）
+
+- per_staff — スタッフ別。各スタッフが自分の Google アカウントを接続する。RB はそのスタッフ担当の予約のみ書き込み、カレンダー上の外部予定は**そのスタッフの**空き枠を塞ぐ
+- shared — サロン共有。オーナーが1アカウントだけ接続する。RB は全スタッフの予約を書き込み（題名に担当スタッフ名を含む）、外部予定は**サロン全体の**空き枠を塞ぐ
+
+## GoogleCalendarConnectionStatus
+
+`google_calendar_connections.status`
+
+- active
+- needs_reconnect — refresh_token の失効・ユーザーによるアクセス取消。同期ジョブはリトライせず打ち切り、UIで再接続を促す
+
 ---
 
 # Soft Delete
@@ -367,6 +480,8 @@ Laravel PHP Enumを採用する。
 - reservations
 
 line_settings は採用しない（連携解除時は物理削除）。
+
+google_calendar_connections / google_busy_blocks も採用しない（接続解除時は物理削除。busy ブロックは cascade delete で消える）。
 
 ---
 
@@ -389,8 +504,18 @@ Salon
 │
 ├── BusinessHours
 │
-└── LineSetting（1:1）
+├── LineSetting（1:1）
+│
+└── GoogleCalendarConnections
+      │
+      └── GoogleBusyBlocks（cascade delete）
 ```
+
+- Salon 1 – N GoogleCalendarConnection
+  - per_staff モード: スタッフ数ぶんの接続（`user_id` あり）
+  - shared モード: 1本のみ（`user_id` は null）
+- User 1 – 1 GoogleCalendarConnection（per_staff モード時のみ。部分 Unique `(salon_id, user_id) WHERE user_id IS NOT NULL` で担保）
+- GoogleCalendarConnection 1 – N GoogleBusyBlock（接続削除時は cascade delete）
 
 ---
 
@@ -404,6 +529,8 @@ Salon
 - hasMany(BusinessHour)
 - hasMany(Reservation)
 - hasOne(LineSetting)
+- hasMany(GoogleCalendarConnection)
+- hasMany(GoogleBusyBlock)
 - hasMany(RecordBlockTemplate)
 
 User
@@ -411,6 +538,8 @@ User
 - belongsTo(Salon)
 - hasMany(Record)
 - hasMany(Reservation)
+- hasOne(GoogleCalendarConnection)（per_staff モード時）
+- hasMany(GoogleBusyBlock)
 
 Customer
 
@@ -442,6 +571,18 @@ BusinessHour
 LineSetting
 
 - belongsTo(Salon)
+
+GoogleCalendarConnection
+
+- belongsTo(Salon)
+- belongsTo(User)（nullable。null = サロン共有接続）
+- hasMany(GoogleBusyBlock)
+
+GoogleBusyBlock
+
+- belongsTo(Salon)
+- belongsTo(GoogleCalendarConnection)
+- belongsTo(User)（nullable。null = サロン全体）
 
 Reservation
 
@@ -590,6 +731,116 @@ booking_token は認証代わりの秘密トークンであるため、生成方
 - CSPRNG（暗号論的乱数）由来の `Str::random(32)`（英数大小32文字、128bit 超のエントロピー）で生成する
 - 連番・タイムスタンプ・短いランダム値など、列挙・推測可能な生成方式は採用してはならない
 - OpenAPI では minLength / maxLength: 32、pattern `^[A-Za-z0-9]{32}$` として定義する
+
+---
+
+## Google OAuth トークンの暗号化保存
+
+Googleカレンダーの接続情報は接続単位で `google_calendar_connections` へ保存する。
+
+`access_token` と `refresh_token` は Laravel の `encrypted` cast でDBに暗号化保存する
+（フェーズ2の `line_settings.channel_secret` / `channel_access_token` と同じ方針）。
+
+これらのトークンと `channel_token`（webhook 検証用の秘密値）はAPIレスポンスに含めない。
+
+接続単位はサロンごとに選ぶ（`salons.google_calendar_mode`）。
+
+- per_staff — 各スタッフが自分のアカウントを接続（`user_id` あり）
+- shared — オーナーが1本だけ接続（`user_id` は null）
+
+いずれも部分 Unique Index で1接続に制限する。モード変更時は既存の接続をすべて解除する。
+
+詳細は [ADR-025](../decisions/ADR-025-google-calendar-sync.md)（Googleカレンダー双方向同期）。
+
+---
+
+## watch チャネル識別子（channel_id / channel_token）
+
+`POST /api/google/calendar/webhook` は認証なしのエンドポイントであり、
+`channel_id` による接続の特定と `channel_token` の照合だけが検証手段である。
+`booking_token`（Web予約のキャンセルページ）と同じく「認証代わりの秘密値」であるため、
+同水準の生成方式を規定する。
+
+- `channel_token` は **CSPRNG（暗号論的乱数）由来の32文字以上**（`Str::random(32)` = 英数大小32文字、128bit 超のエントロピー）で生成し、照合は **`hash_equals`**（タイミング安全な比較）で行う
+- `channel_id` も推測・列挙できないよう CSPRNG 由来のランダム値（UUIDv4 または `Str::random(32)` 相当）で生成する
+- 連番・タイムスタンプ・短いランダム値など、列挙・推測可能な生成方式は採用してはならない
+- 両者とも接続ごとに新規生成し、watch チャネルを張り直すたびに新しい値を発行する
+  （張り直し = 定期更新・対象カレンダー変更・再接続。旧チャネル宛の通知を新チャネルの値で通してはならない）。
+  Google にチャネル更新 API は存在しないため、「更新」とは新しい `channel_id` で watch を張り直し、旧チャネルを `channels.stop` することを指す
+- 前述のとおり、いずれもAPIレスポンスに含めない
+
+照合は3段で行い、いずれかに失敗した場合（未知の `channel_id`、`channel_token` 不一致、
+`X-Goog-Resource-ID` が `channel_resource_id` と不一致）は
+ログのみ残して 200 を返す（Google のリトライ暴走防止。フェーズ2の LINE webhook と同じ方針）。
+
+---
+
+## RB 由来イベントの判定とエコー（無限ループ）防止
+
+RB が作成する Google イベントには `extendedProperties.private.rb_reservation_id` と `rb_salon_id` を必ず付与する。
+これは RB 自身が付けた**自己識別のヒント**であり、Google カレンダー上では誰でも編集・複製できる**改竄可能な入力**である。
+よってマーカーを判定の権威にしてはならない（他サロンの ID を書いたイベントを作られれば、テナント境界を越えて予約を操作されうる）。
+
+**RB 由来の確定は `reservations` の `(salon_id, google_event_id)` 突合で行う**
+（per_staff モードでは担当 `user_id` も一致すること）。
+
+- 突合した = RB 由来の予約イベント → start と end の**両方**が RB の予約と一致すれば no-op（書き戻さない）。
+  これにより送信同期 → webhook → 受信同期 → 送信同期… のループが収束する。
+  あわせて `event.updated` と `reservations.updated_at` を UTC の instant として比較し、
+  RB の方が新しければ no-op とする（キュー待ちの管理画面の変更を古い値で潰さないため。Carbon は `->utc()` 必須）
+- 突合しない = 外部予定 → マーカーの有無にかかわらず `google_busy_blocks` へ upsert する（「無視する」ではない）
+
+削除イベント（`status=cancelled`）は Google が `id` 以外のフィールドを返す保証が無く、
+`extendedProperties` を持たない。この突合は削除イベントに対する**唯一の判定手段**でもある。
+
+したがって `reservations.google_event_id` は、送信同期でイベントを更新・削除するための対応付けであると同時に、
+**受信同期における RB 由来判定の唯一の根拠**である（サロン単位のスコープを DB 側で担保できるため）。
+
+`reservations` は書き込み先の接続（カレンダー）をカラムとして保持しない。
+書き込み先は予約の担当スタッフから導出できるためである
+（per_staff = `reservations.user_id` の接続、shared = `user_id IS NULL` のサロン接続）。
+
+ただし per_staff モードで**担当スタッフを変更**した場合、書き込み先カレンダーが移動する。
+Google のイベントIDはカレンダー単位でユニークであり、
+新担当のカレンダーへ旧IDで `events.update` を投げても 404 になる。
+また旧担当のカレンダーにイベントを残したまま `google_event_id` を新IDへ差し替えると、
+残ったイベントはどの予約とも突合しなくなり、
+旧担当側の受信同期で**外部予定として busy 化され、旧担当の枠を永久に塞ぐ**。
+
+送信同期ジョブは実行時点の予約を再読み込みして書くため、
+引数を渡さなければ**変更前の担当スタッフを知り得ない**。
+よって担当変更時は、ジョブの引数に予約IDとあわせて変更前の `user_id` を渡し、
+旧担当のカレンダーからイベントを削除してから新担当のカレンダーへ作成し直す
+（`google_event_id` も新IDで上書きする）。
+shared モードは接続が1本のため、この移動は発生しない。
+
+送信同期側の規定は [requirements/google-calendar.md](../requirements/google-calendar.md) の「送信同期」を参照。
+
+RB由来イベントが Google 側で移動され、移動先が他の予約・営業時間・busy と競合する場合は、
+RB の値で Google 側を巻き戻す（**RB を真実とする**）。
+取り込むのは `start_at` のみで、`end_at` は常に `start_at + menu.duration_minutes` から再導出する
+（`reservations.end_at` がサーバ導出である原則を受信同期でも崩さない）。
+
+---
+
+## busy ブロックは時刻のみ保存する
+
+`google_busy_blocks` には開始・終了時刻（`start_at` / `end_at`）だけを保存し、
+イベントのタイトル・説明・出席者等の内容は保存しない。
+
+理由
+
+- 対象はスタッフの私用予定であり、サロン側に予定の中身を見せる必要がない（プライバシー配慮）
+- 空き枠計算に必要な情報は時間帯のみである
+- 保存しなければ漏洩しない（保存する情報を最小限にする）
+
+RB のカレンダーUI上は「外部予定」という固定表記でグレー表示する。
+
+空き枠への反映は `AvailabilityService` と `PublicBookingService` の枠検証で行い、
+公開Web予約は busy と重なる枠を予約不可とする。
+サロン側の手動予約は busy でも登録可能とする（営業時間と同じくサロンの裁量を優先する。ADR-023 と同じ思想）。
+
+詳細は [ADR-025](../decisions/ADR-025-google-calendar-sync.md)（Googleカレンダー双方向同期）。
 
 ---
 

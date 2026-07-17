@@ -19,5 +19,6 @@
 | 15 | LINE Settings           | /settings/line                |
 | 16 | Public Booking          | /booking/:slug                |
 | 17 | Public Booking Cancel   | /booking/cancel/:token        |
+| 18 | Google Calendar Settings| /settings/google-calendar     |
 
 * No 16・17 は**認証なしでアクセスできる公開ページ**（顧客向け）。認証ガード対象外の公開ルートとし、PublicLayout（サイドバーなし・モバイルファースト）を使用する（[public-booking.md](public-booking.md)）

@@ -36,10 +36,14 @@ tags:
     description: LINE連携設定
   - name: BookingPage
     description: Web予約ページ設定
+  - name: GoogleCalendar
+    description: Googleカレンダー連携設定
   - name: PublicBooking
     description: 公開Web予約（認証なし・/api/public/v1）
   - name: LineWebhook
     description: LINE Webhook（/api/line/webhook）
+  - name: GoogleCalendarWebhook
+    description: Googleカレンダー Webhook（/api/google/calendar/webhook）
 
 security:
   - bearerAuth: []
@@ -106,6 +110,31 @@ paths:
   /booking-page:
     $ref: "./paths/line-settings.yaml#/bookingPage"
 
+  # --- Googleカレンダー連携 ---
+  # callback のみ認証なし（Google からのブラウザリダイレクト・302 を返す）。
+  # それ以外は /api/v1・auth:sanctum。
+
+  /google-calendar:
+    $ref: "./paths/google-calendar.yaml#/googleCalendar"
+
+  /google-calendar/busy-blocks:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarBusyBlocks"
+
+  /google-calendar/mode:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarMode"
+
+  /google-calendar/auth-url:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarAuthUrl"
+
+  /google-calendar/callback:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarCallback"
+
+  /google-calendar/connections/{id}/calendars:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarConnectionCalendars"
+
+  /google-calendar/connections/{id}:
+    $ref: "./paths/google-calendar.yaml#/googleCalendarConnection"
+
   # --- 公開Web予約API ---
   # prefix は /api/public/v1（認証なし・throttle あり）。
   # 各 path item 側の servers がルートの servers（/api/v1）を上書きする。
@@ -131,6 +160,13 @@ paths:
 
   /line/webhook:
     $ref: "./paths/line-webhook.yaml#/lineWebhook"
+
+  # --- Googleカレンダー Webhook ---
+  # prefix は /api（認証なし・throttle なし・X-Goog-Channel-Token 検証あり）。
+  # path item 側の servers がルートの servers（/api/v1）を上書きする。
+
+  /google/calendar/webhook:
+    $ref: "./paths/google-calendar-webhook.yaml#/googleCalendarWebhook"
 
 components:
 
