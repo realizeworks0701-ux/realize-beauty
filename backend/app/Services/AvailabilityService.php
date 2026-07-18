@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\GoogleBusyBlock;
 use App\Models\Menu;
 use App\Models\Reservation;
 use App\Models\Salon;
+use App\Repositories\GoogleBusyBlockRepository;
 use App\Repositories\ReservationRepository;
 use App\Repositories\UserRepository;
 use Illuminate\Support\Carbon;
@@ -26,6 +28,7 @@ class AvailabilityService
         private readonly BusinessHourService $businessHourService,
         private readonly ReservationRepository $reservationRepository,
         private readonly UserRepository $userRepository,
+        private readonly GoogleBusyBlockRepository $busyBlockRepository,
     ) {}
 
     /**
@@ -50,19 +53,26 @@ class AvailabilityService
             return collect();
         }
 
+        $rangeStart = $slots->first()->copy()->utc();
+        $rangeEnd = $slots->last()->copy()->addMinutes($menu->duration_minutes)->utc();
+
         $reservations = $this->reservationRepository->listOverlapping(
             $salon->id,
             $staffIds,
-            $slots->first()->copy()->utc(),
-            $slots->last()->copy()->addMinutes($menu->duration_minutes)->utc(),
+            $rangeStart,
+            $rangeEnd,
         );
 
+        // 外部予定（busy）と重なる枠は予約不可（shared 接続の busy は user_id=null で全スタッフを塞ぐ）
+        $busyBlocks = $this->busyBlockRepository->listBySalonBetween($salon->id, $rangeStart, $rangeEnd);
+
         return $slots
-            ->filter(function (Carbon $slot) use ($staffIds, $reservations, $menu) {
+            ->filter(function (Carbon $slot) use ($staffIds, $reservations, $busyBlocks, $menu) {
                 $endAt = $slot->copy()->addMinutes($menu->duration_minutes);
 
                 return collect($staffIds)->contains(
-                    fn (int $staffId) => ! $this->hasOverlap($reservations, $staffId, $slot, $endAt),
+                    fn (int $staffId) => ! $this->hasOverlap($reservations, $staffId, $slot, $endAt)
+                        && ! $this->hasBusyOverlap($busyBlocks, $staffId, $slot, $endAt),
                 );
             })
             ->values();
@@ -129,6 +139,18 @@ class AvailabilityService
             fn (Reservation $reservation) => $reservation->user_id === $userId
                 && $reservation->start_at->lt($endAt)
                 && $reservation->end_at->gt($startAt),
+        );
+    }
+
+    /**
+     * @param  Collection<int, GoogleBusyBlock>  $busyBlocks
+     */
+    private function hasBusyOverlap(Collection $busyBlocks, int $userId, Carbon $startAt, Carbon $endAt): bool
+    {
+        return $busyBlocks->contains(
+            fn (GoogleBusyBlock $busy) => ($busy->user_id === null || $busy->user_id === $userId)
+                && $busy->start_at->lt($endAt)
+                && $busy->end_at->gt($startAt),
         );
     }
 

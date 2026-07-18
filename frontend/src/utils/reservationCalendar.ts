@@ -1,4 +1,4 @@
-import type { BusinessHour, Reservation } from '@/types'
+import type { BusinessHour, BusyBlock, Reservation } from '@/types'
 
 /** 分単位の表示レンジ（0 = 表示日の 00:00） */
 export interface DisplayRange {
@@ -69,45 +69,32 @@ export function computeDisplayRange(
   return { startMin, endMin }
 }
 
-/** 同一列内で時間帯が重なるブロックのレーン割り当て結果 */
-export interface LaidOutBlock {
-  reservation: Reservation
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(Math.max(value, min), max)
+
+interface LaneInput<T> {
+  item: T
   startMin: number
   endMin: number
-  lane: number
-  laneCount: number
 }
 
-/**
- * 同一スタッフ列の予約をレーンに割り当てる。
- * 重なり合うブロック群（クラスタ）ごとに列幅を等分して横並びに表示するための情報を返す。
- */
-export function layoutReservations(reservations: Reservation[], day: Date): LaidOutBlock[] {
-  const items = reservations
-    .map((reservation) => {
-      const startMin = minutesIntoDay(reservation.start_at, day)
-      return {
-        reservation,
-        startMin,
-        endMin: Math.max(minutesIntoDay(reservation.end_at, day), startMin + 5),
-      }
-    })
-    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+type LaidOut<T> = LaneInput<T> & { lane: number; laneCount: number }
 
-  const blocks: LaidOutBlock[] = []
-  let cluster: { item: (typeof items)[number]; lane: number }[] = []
+/**
+ * 時間帯が重なる区間をレーンに割り当てる（予約・外部予定で共通）。
+ * 重なり合う区間群（クラスタ）ごとに列幅を等分して横並びにするための lane / laneCount を返す。
+ */
+function assignLanes<T>(inputs: LaneInput<T>[]): LaidOut<T>[] {
+  const items = [...inputs].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+
+  const result: LaidOut<T>[] = []
+  let cluster: { item: LaneInput<T>; lane: number }[] = []
   let laneEnds: number[] = []
   let clusterEnd = -1
 
   const flushCluster = (): void => {
     for (const { item, lane } of cluster) {
-      blocks.push({
-        reservation: item.reservation,
-        startMin: item.startMin,
-        endMin: item.endMin,
-        lane,
-        laneCount: laneEnds.length,
-      })
+      result.push({ ...item, lane, laneCount: laneEnds.length })
     }
     cluster = []
     laneEnds = []
@@ -130,5 +117,83 @@ export function layoutReservations(reservations: Reservation[], day: Date): Laid
   }
   flushCluster()
 
-  return blocks
+  return result
+}
+
+/** 同一列内で時間帯が重なるブロックのレーン割り当て結果 */
+export interface LaidOutBlock {
+  reservation: Reservation
+  startMin: number
+  endMin: number
+  lane: number
+  laneCount: number
+}
+
+/**
+ * 同一スタッフ列の予約をレーンに割り当てる。
+ * 重なり合うブロック群（クラスタ）ごとに列幅を等分して横並びに表示するための情報を返す。
+ */
+export function layoutReservations(reservations: Reservation[], day: Date): LaidOutBlock[] {
+  const inputs = reservations.map((reservation) => {
+    const startMin = minutesIntoDay(reservation.start_at, day)
+    return {
+      item: reservation,
+      startMin,
+      endMin: Math.max(minutesIntoDay(reservation.end_at, day), startMin + 5),
+    }
+  })
+  return assignLanes(inputs).map((laid) => ({
+    reservation: laid.item,
+    startMin: laid.startMin,
+    endMin: laid.endMin,
+    lane: laid.lane,
+    laneCount: laid.laneCount,
+  }))
+}
+
+/** 外部予定（busy ブロック）のレーン割り当て結果 */
+export interface LaidOutBusyBlock {
+  block: BusyBlock
+  startMin: number
+  endMin: number
+  lane: number
+  laneCount: number
+}
+
+/**
+ * 指定スタッフ列に効く外部予定を返す。
+ * per_staff の外部予定は担当スタッフ（user_id 一致）にのみ、
+ * shared の外部予定（user_id=null）は全スタッフ列に効く（サロン全体を塞ぐ意味論）。
+ */
+export function busyBlocksForStaff(blocks: BusyBlock[], staffId: number): BusyBlock[] {
+  return blocks.filter((block) => block.user_id === null || block.user_id === staffId)
+}
+
+/**
+ * 外部予定を表示レンジ内にクランプしてレーン割り当てする（docs/ui/reservation.md 外部予定ブロック）。
+ * 終日予定はレンジ全体を覆うブロックにし、レンジ外の予定は表示しない（レンジは予約のみで拡張する）。
+ */
+export function layoutBusyBlocks(
+  blocks: BusyBlock[],
+  day: Date,
+  range: DisplayRange,
+): LaidOutBusyBlock[] {
+  const inputs = blocks
+    .map((block) => {
+      const rawStart = minutesIntoDay(block.start_at, day)
+      const rawEnd = Math.max(minutesIntoDay(block.end_at, day), rawStart + 5)
+      return {
+        item: block,
+        startMin: clamp(rawStart, range.startMin, range.endMin),
+        endMin: clamp(rawEnd, range.startMin, range.endMin),
+      }
+    })
+    .filter((input) => input.endMin > input.startMin)
+  return assignLanes(inputs).map((laid) => ({
+    block: laid.item,
+    startMin: laid.startMin,
+    endMin: laid.endMin,
+    lane: laid.lane,
+    laneCount: laid.laneCount,
+  }))
 }

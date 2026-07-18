@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { Reservation } from '@/types'
+import type { BusyBlock, Reservation } from '@/types'
 import {
+  busyBlocksForStaff,
   computeDisplayRange,
   hhmmToMinutes,
+  layoutBusyBlocks,
   layoutReservations,
   minutesIntoDay,
   minutesToHHMM,
@@ -104,5 +106,82 @@ describe('layoutReservations', () => {
     expect(byId.get(2)?.laneCount).toBe(2)
     expect(byId.get(1)?.lane).not.toBe(byId.get(2)?.lane)
     expect(byId.get(3)?.laneCount).toBe(1)
+  })
+})
+
+function busy(overrides: Partial<BusyBlock> & { start_at: string; end_at: string }): BusyBlock {
+  return { id: 1, user_id: 1, ...overrides }
+}
+
+describe('busyBlocksForStaff', () => {
+  const blocks: BusyBlock[] = [
+    busy({ id: 1, user_id: 1, start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' }),
+    busy({ id: 2, user_id: 2, start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' }),
+    busy({ id: 3, user_id: null, start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' }),
+  ]
+
+  it('per_staff の外部予定は担当スタッフ列にのみ効く', () => {
+    expect(busyBlocksForStaff(blocks, 1).map((b) => b.id)).toEqual([1, 3])
+  })
+
+  it('shared（user_id=null）の外部予定は全スタッフ列に効く', () => {
+    expect(busyBlocksForStaff(blocks, 2).map((b) => b.id)).toEqual([2, 3])
+    expect(busyBlocksForStaff(blocks, 99).map((b) => b.id)).toEqual([3])
+  })
+})
+
+describe('layoutBusyBlocks', () => {
+  const range = { startMin: 480, endMin: 1200 } // 08:00〜20:00
+
+  it('レンジ内の外部予定をそのまま配置する', () => {
+    const laid = layoutBusyBlocks(
+      [busy({ start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' })],
+      day,
+      range,
+    )
+    expect(laid).toHaveLength(1)
+    expect(laid[0]).toMatchObject({ startMin: 720, endMin: 780, lane: 0, laneCount: 1 })
+  })
+
+  it('終日予定は表示レンジ全体を覆う', () => {
+    const laid = layoutBusyBlocks(
+      [busy({ start_at: '2026-07-14T00:00:00', end_at: '2026-07-15T00:00:00' })],
+      day,
+      range,
+    )
+    expect(laid[0]).toMatchObject({ startMin: 480, endMin: 1200 })
+  })
+
+  it('表示レンジ外の外部予定は表示しない', () => {
+    const laid = layoutBusyBlocks(
+      [busy({ start_at: '2026-07-14T06:00:00', end_at: '2026-07-14T07:00:00' })],
+      day,
+      range,
+    )
+    expect(laid).toHaveLength(0)
+  })
+
+  it('レンジ端に一部だけ掛かる外部予定は可視部分にクランプする', () => {
+    const laid = layoutBusyBlocks(
+      [busy({ start_at: '2026-07-14T07:30:00', end_at: '2026-07-14T08:30:00' })],
+      day,
+      range,
+    )
+    expect(laid[0]).toMatchObject({ startMin: 480, endMin: 510 })
+  })
+
+  it('重なる外部予定は列幅を等分する', () => {
+    const laid = layoutBusyBlocks(
+      [
+        busy({ id: 1, start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' }),
+        busy({ id: 2, start_at: '2026-07-14T12:30:00', end_at: '2026-07-14T13:30:00' }),
+      ],
+      day,
+      range,
+    )
+    const byId = new Map(laid.map((b) => [b.block.id, b]))
+    expect(byId.get(1)?.laneCount).toBe(2)
+    expect(byId.get(2)?.laneCount).toBe(2)
+    expect(byId.get(1)?.lane).not.toBe(byId.get(2)?.lane)
   })
 })

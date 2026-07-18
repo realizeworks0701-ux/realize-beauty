@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use App\Jobs\SendBookingConfirmationJob;
+use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Customer;
 use App\Models\Menu;
 use App\Models\Reservation;
 use App\Models\Salon;
 use App\Repositories\CustomerRepository;
+use App\Repositories\GoogleBusyBlockRepository;
 use App\Repositories\LineSettingRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\ReservationRepository;
@@ -49,6 +51,7 @@ class PublicBookingService
         private readonly LineSettingRepository $lineSettingRepository,
         private readonly BusinessHourService $businessHourService,
         private readonly AvailabilityService $availabilityService,
+        private readonly GoogleBusyBlockRepository $busyBlockRepository,
     ) {}
 
     /**
@@ -126,6 +129,10 @@ class PublicBookingService
                 SendBookingConfirmationJob::dispatch($reservation->id)->afterCommit();
             }
 
+            if ($salon->google_calendar_mode !== null) {
+                SyncReservationToGoogleJob::dispatch($reservation->id)->afterCommit();
+            }
+
             return [
                 'reservation' => $reservation,
                 'line' => $this->issueLineLinkGuide($salon, $customer),
@@ -149,7 +156,14 @@ class PublicBookingService
             throw new ConflictHttpException('この予約はキャンセルできません。');
         }
 
-        return $this->reservationRepository->findByBookingTokenOrFail($bookingToken);
+        $reservation = $this->reservationRepository->findByBookingTokenOrFail($bookingToken);
+
+        // 一括 UPDATE でモデルイベントが発火しないため、Google イベント削除を明示 dispatch する
+        if ($reservation->salon->google_calendar_mode !== null) {
+            SyncReservationToGoogleJob::dispatch($reservation->id)->afterCommit();
+        }
+
+        return $reservation;
     }
 
     /**
@@ -234,7 +248,10 @@ class PublicBookingService
                 $endAt,
             );
 
-            if ($overlapping->isEmpty()) {
+            // busy 判定はロック内の重複チェックと同じ箇所で行う（外部予定は予約者に開示しない）
+            $busy = $this->busyBlockRepository->listOverlapping($salonId, $candidateId, $startAt, $endAt);
+
+            if ($overlapping->isEmpty() && $busy->isEmpty()) {
                 return $candidateId;
             }
         }

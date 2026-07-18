@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\GoogleCalendarMode;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -20,10 +21,12 @@ class Salon extends Model
         'business_hours',
         'booking_slug',
         'is_active',
+        'google_calendar_mode',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'google_calendar_mode' => GoogleCalendarMode::class,
     ];
 
     protected static function booted(): void
@@ -78,5 +81,10 @@ class Salon extends Model
     public function lineSetting(): HasOne
     {
         return $this->hasOne(LineSetting::class);
+    }
+
+    public function googleCalendarConnections(): HasMany
+    {
+        return $this->hasMany(GoogleCalendarConnection::class);
     }
 }

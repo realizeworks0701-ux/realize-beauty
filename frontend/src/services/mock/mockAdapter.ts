@@ -3,8 +3,14 @@ import { AxiosError } from 'axios'
 import type {
   BusinessHour,
   BusinessHoursUpdateInput,
+  BusyBlock,
   Customer,
   CustomerInput,
+  GoogleCalendarConnection,
+  GoogleCalendarConnectionUpdateInput,
+  GoogleCalendarListEntry,
+  GoogleCalendarMode,
+  GoogleCalendarModeUpdateInput,
   LineSetting,
   LineSettingUpdateInput,
   Menu,
@@ -21,6 +27,7 @@ import type {
   TreatmentRecord,
 } from '@/types'
 import { toIsoWithOffset } from '@/utils/format'
+import { PRIMARY_CALENDAR_ID } from '@/utils/googleCalendar'
 import { isWithinBookingWindow, listSlotStartMinutes, slotToIso } from '@/utils/publicBooking'
 import {
   MOCK_BOOKING_SLUG,
@@ -254,6 +261,175 @@ const toLineSettingResponse = (): LineSetting =>
         last_webhook_at: lineSetting.last_webhook_at,
         webhook_url: webhookUrl(),
       }
+
+// ---- Googleカレンダー連携用ヘルパー ----
+
+/**
+ * 認可URLへの遷移でページ全体がリロードされるため、モジュールスコープの状態では接続結果が消える。
+ * 連携状態のみ sessionStorage に保持し、コールバック復帰後も接続を引き継ぐ。
+ */
+const GOOGLE_CALENDAR_STORAGE_KEY = 'rb-mock-google-calendar'
+
+const GOOGLE_SETTINGS_PATH = '/settings/google-calendar'
+
+/** モックの接続先 Google アカウント（RBのログインメールとは別物） */
+const GOOGLE_ACCOUNT_EMAIL = 'rb.mock@gmail.com'
+
+interface MockGoogleCalendarState {
+  mode: GoogleCalendarMode | null
+  connections: GoogleCalendarConnection[]
+  nextId: number
+}
+
+const defaultGoogleCalendarState = (): MockGoogleCalendarState => ({
+  mode: null,
+  connections: [],
+  nextId: 1,
+})
+
+const loadGoogleCalendarState = (): MockGoogleCalendarState => {
+  try {
+    const stored = sessionStorage.getItem(GOOGLE_CALENDAR_STORAGE_KEY)
+    return stored ? (JSON.parse(stored) as MockGoogleCalendarState) : defaultGoogleCalendarState()
+  } catch {
+    return defaultGoogleCalendarState()
+  }
+}
+
+// モードは未設定・接続0件から開始する（モード設定 → 接続 → カレンダー変更 → 解除 を辿れる）
+const googleCalendar: MockGoogleCalendarState = loadGoogleCalendarState()
+
+const saveGoogleCalendarState = (): void => {
+  try {
+    sessionStorage.setItem(GOOGLE_CALENDAR_STORAGE_KEY, JSON.stringify(googleCalendar))
+  } catch {
+    // 保存できない環境では引き継ぎのみ諦め、メモリ上の状態で動作を続ける
+  }
+}
+
+const mockCalendarEntries = (): GoogleCalendarListEntry[] => [
+  { id: GOOGLE_ACCOUNT_EMAIL, summary: mockUser.name, primary: true },
+  { id: 'rbmock-work@group.calendar.google.com', summary: '仕事用カレンダー', primary: false },
+  { id: 'ja.japanese#holiday@group.v.calendar.google.com', summary: '日本の祝日', primary: false },
+]
+
+const googleSettingsResponse = (): {
+  mode: GoogleCalendarMode | null
+  connections: GoogleCalendarConnection[]
+} => ({
+  mode: googleCalendar.mode,
+  connections: structuredClone([...googleCalendar.connections].sort((a, b) => a.id - b.id)),
+})
+
+/**
+ * 初回同期はキュー経由のため接続直後の取得では last_synced_at が入らない。
+ * 応答を組み立てた後に同期済みへ進め、次回の取得で「同期待ち」→「最終同期」の遷移を再現する。
+ */
+const completeGoogleInitialSync = (): void => {
+  const pending = googleCalendar.connections.filter(
+    (connection) => connection.status === 'active' && connection.last_synced_at === null,
+  )
+  if (pending.length === 0) return
+  for (const connection of pending) {
+    connection.last_synced_at = toIsoWithOffset(new Date())
+  }
+  saveGoogleCalendarState()
+}
+
+/** 操作できる接続のみ返す（per_staff は本人、shared はオーナー・マネージャー。他は 404） */
+const findOperableConnection = (id: number): GoogleCalendarConnection | undefined => {
+  const connection = googleCalendar.connections.find((item) => item.id === id)
+  if (!connection) return undefined
+  if (connection.user === null) {
+    return mockUser.role === 'owner' || mockUser.role === 'manager' ? connection : undefined
+  }
+  return connection.user.id === mockUser.id ? connection : undefined
+}
+
+/**
+ * Google の同意画面の代わりに、その場で接続を作って設定画面へ戻すURLを返す。
+ * 検証用に、遷移前のURLのクエリで結果を切り替える:
+ *   ?mock_error={code}            → 接続せず ?error={code} で戻る（未知の値も指定できる）
+ *   ?mock_status=needs_reconnect  → 要再接続の接続を作る
+ */
+const buildMockAuthUrl = (): string => {
+  const params = new URLSearchParams(window.location.search)
+  const errorCode = params.get('mock_error')
+  if (errorCode !== null) {
+    return `${window.location.origin}${GOOGLE_SETTINGS_PATH}?error=${encodeURIComponent(errorCode)}`
+  }
+
+  const status = params.get('mock_status') === 'needs_reconnect' ? 'needs_reconnect' : 'active'
+  const user = googleCalendar.mode === 'per_staff' ? { id: mockUser.id, name: mockUser.name } : null
+  const existing = googleCalendar.connections.find(
+    (item) => (item.user?.id ?? null) === (user?.id ?? null),
+  )
+  if (existing) {
+    // 同一アカウントでの再接続は既存の接続を更新する
+    existing.status = status
+    existing.last_synced_at = null
+  } else {
+    googleCalendar.connections.push({
+      id: googleCalendar.nextId++,
+      user,
+      google_account_email: GOOGLE_ACCOUNT_EMAIL,
+      calendar_id: PRIMARY_CALENDAR_ID,
+      status,
+      last_synced_at: null,
+    })
+  }
+  saveGoogleCalendarState()
+  return `${window.location.origin}${GOOGLE_SETTINGS_PATH}?connected=1`
+}
+
+/** from..to（YYYY-MM-DD, 両端含む）の各日を返す */
+const eachDate = (from: string, to: string): Date[] => {
+  const [fy = 0, fm = 0, fd = 0] = from.split('-').map(Number)
+  const [ty = 0, tm = 0, td = 0] = to.split('-').map(Number)
+  if (!fy || !fm || !fd || !ty || !tm || !td) return []
+  const dates: Date[] = []
+  const cursor = new Date(fy, fm - 1, fd)
+  const end = new Date(ty, tm - 1, td)
+  while (cursor <= end && dates.length <= 60) {
+    dates.push(new Date(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return dates
+}
+
+/**
+ * 外部予定（busy ブロック）のモック。接続があるモードでのみ、各日 12:00-13:00 の外部予定を返す。
+ * per_staff は接続スタッフの列（user_id）を、shared はサロン全体（user_id=null）を塞ぐ。
+ * 未連携（mode=null / 接続0件）では空配列。
+ */
+const mockBusyBlocks = (from: string, to: string): BusyBlock[] => {
+  if (googleCalendar.mode === null || googleCalendar.connections.length === 0) return []
+  const targetUserIds: (number | null)[] =
+    googleCalendar.mode === 'shared'
+      ? [null]
+      : googleCalendar.connections.flatMap((connection) =>
+          connection.user ? [connection.user.id] : [],
+        )
+  if (targetUserIds.length === 0) return []
+
+  const blocks: BusyBlock[] = []
+  let id = 1
+  for (const date of eachDate(from, to)) {
+    const start = new Date(date)
+    start.setHours(12, 0, 0, 0)
+    const end = new Date(date)
+    end.setHours(13, 0, 0, 0)
+    for (const userId of targetUserIds) {
+      blocks.push({
+        id: id++,
+        start_at: toIsoWithOffset(start),
+        end_at: toIsoWithOffset(end),
+        user_id: userId,
+      })
+    }
+  }
+  return blocks
+}
 
 export function installMockAdapter(instance: AxiosInstance): void {
   instance.defaults.adapter = async (config: InternalAxiosRequestConfig) => {
@@ -741,6 +917,84 @@ export function installMockAdapter(instance: AxiosInstance): void {
           booking_page_url: `${window.location.origin}/booking/${MOCK_BOOKING_SLUG}`,
         },
       })
+    }
+
+    // ---- Google Calendar ----
+    if (method === 'get' && url === '/google-calendar') {
+      const data = googleSettingsResponse()
+      completeGoogleInitialSync()
+      return respond(config, { data })
+    }
+
+    if (method === 'get' && url === '/google-calendar/busy-blocks') {
+      const from: string = config.params?.from ?? toLocalDateString(new Date())
+      const to: string = config.params?.to ?? from
+      return respond(config, { data: mockBusyBlocks(from, to) })
+    }
+
+    if (method === 'put' && url === '/google-calendar/mode') {
+      const input = parseBody<GoogleCalendarModeUpdateInput>(config)
+      if (input.mode !== 'per_staff' && input.mode !== 'shared') {
+        return validationError(config, { mode: ['接続単位が正しくありません。'] })
+      }
+      // モードを変更すると既存の接続はすべて解除される
+      if (input.mode !== googleCalendar.mode) {
+        googleCalendar.connections = []
+      }
+      googleCalendar.mode = input.mode
+      saveGoogleCalendarState()
+      return respond(config, { data: googleSettingsResponse() })
+    }
+
+    if (method === 'post' && url === '/google-calendar/auth-url') {
+      if (googleCalendar.mode === null) {
+        return validationError(config, { mode: ['先に接続単位を設定してください。'] })
+      }
+      return respond(config, { data: { auth_url: buildMockAuthUrl() } })
+    }
+
+    const googleCalendarListMatch = url.match(/^\/google-calendar\/connections\/(\d+)\/calendars$/)
+    if (method === 'get' && googleCalendarListMatch) {
+      const connection = findOperableConnection(Number(googleCalendarListMatch[1]))
+      if (!connection) return notFound(config)
+      if (connection.status === 'needs_reconnect') {
+        return validationError(config, {
+          connection: ['Googleとの接続が切れています。再接続してください。'],
+        })
+      }
+      return respond(config, { data: mockCalendarEntries() })
+    }
+
+    const googleConnectionMatch = url.match(/^\/google-calendar\/connections\/(\d+)$/)
+    if (googleConnectionMatch) {
+      const id = Number(googleConnectionMatch[1])
+      const connection = findOperableConnection(id)
+      if (!connection) return notFound(config)
+      if (method === 'put') {
+        if (connection.status === 'needs_reconnect') {
+          return validationError(config, {
+            connection: ['Googleとの接続が切れています。再接続してください。'],
+          })
+        }
+        const input = parseBody<GoogleCalendarConnectionUpdateInput>(config)
+        // リテラル primary、または calendarList が返す id のみ受け付ける
+        const isKnownCalendar =
+          input.calendar_id === PRIMARY_CALENDAR_ID ||
+          mockCalendarEntries().some((entry) => entry.id === input.calendar_id)
+        if (!isKnownCalendar) {
+          return validationError(config, { calendar_id: ['指定したカレンダーは選択できません。'] })
+        }
+        connection.calendar_id = input.calendar_id
+        // busy を再構築するため同期待ちへ戻る
+        connection.last_synced_at = null
+        saveGoogleCalendarState()
+        return respond(config, { data: structuredClone(connection) })
+      }
+      if (method === 'delete') {
+        googleCalendar.connections = googleCalendar.connections.filter((item) => item.id !== id)
+        saveGoogleCalendarState()
+        return respond(config, null, 204)
+      }
     }
 
     // ---- Public Booking（/api/public/v1 系。publicApiClient から利用） ----

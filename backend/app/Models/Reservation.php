@@ -24,6 +24,7 @@ class Reservation extends Model
         'source',
         'booking_token',
         'reminder_sent_at',
+        'google_event_id',
         'note',
     ];
 

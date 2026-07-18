@@ -12,3 +12,13 @@ Artisan::command('inspire', function () {
 Schedule::command('reservations:send-reminders')
     ->dailyAt('18:00')
     ->timezone(config('app.salon_timezone'));
+
+// Google カレンダー watch チャネルの張り直し（毎日 03:00 JST。止まると変更検知が静かに停止する）
+Schedule::command('google-calendar:renew-channels')
+    ->dailyAt('03:00')
+    ->timezone(config('app.salon_timezone'));
+
+// Google カレンダー同期窓の日次前進（毎日 04:00 JST。止まると60日で busy 取り込みが静かに停止する）
+Schedule::command('google-calendar:refresh-sync')
+    ->dailyAt('04:00')
+    ->timezone(config('app.salon_timezone'));

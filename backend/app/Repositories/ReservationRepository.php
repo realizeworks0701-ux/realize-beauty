@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Enums\ReservationStatus;
+use App\Models\GoogleCalendarConnection;
 use App\Models\Reservation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
@@ -154,6 +155,72 @@ class ReservationRepository
     public function markReminderSent(Reservation $reservation): void
     {
         $reservation->update(['reminder_sent_at' => now()]);
+    }
+
+    /**
+     * 送信同期ジョブ用の再読み込み（実行時点の最新状態を書くため）。
+     * 論理削除された予約（誤登録取り消し）も対象イベント削除のため withTrashed で取得する。
+     */
+    public function findForSync(int $id): ?Reservation
+    {
+        return Reservation::withTrashed()
+            ->with(['menu', 'user', 'salon'])
+            ->find($id);
+    }
+
+    /**
+     * 受信同期の RB 由来判定。テナント境界は接続レコードの (salon_id, google_event_id) 突合で確定する
+     * （per_staff は担当 user_id の一致も条件に含める）。マーカーは突合条件に含めない（改竄可能なため）。
+     */
+    public function findRbDerived(GoogleCalendarConnection $connection, string $googleEventId): ?Reservation
+    {
+        return Reservation::where('salon_id', $connection->salon_id)
+            ->where('google_event_id', $googleEventId)
+            ->when($connection->user_id !== null, fn ($query) => $query->where('user_id', $connection->user_id))
+            ->with('menu')
+            ->first();
+    }
+
+    /**
+     * 同期起因の属性更新（google_event_id・status・start_at/end_at）。関連の再読込は行わない。
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function updateForSync(Reservation $reservation, array $attributes): void
+    {
+        $reservation->update($attributes);
+    }
+
+    /**
+     * 初回送信同期の対象（同期窓内 [from, to) の status=reserved な対象予約）。
+     * per_staff は当該スタッフ担当、shared（$userId = null）は全スタッフ。
+     *
+     * @return Collection<int, Reservation>
+     */
+    public function listReservedForGoogleSync(int $salonId, ?int $userId, Carbon $from, Carbon $to): Collection
+    {
+        return Reservation::where('salon_id', $salonId)
+            ->where('status', ReservationStatus::Reserved->value)
+            ->where('start_at', '>=', $from)
+            ->where('start_at', '<', $to)
+            ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
+            ->orderBy('start_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * 接続解除・モード切替時に対象範囲の google_event_id を null クリアする
+     * （イベントIDはカレンダー単位のスコープ。接続が消えた時点で参照は無効になる）。
+     * 論理削除済みの予約も対象に含める（旧イベントの孤児参照を残さない）。
+     */
+    public function clearGoogleEventIdForScope(int $salonId, ?int $userId): int
+    {
+        return Reservation::withTrashed()
+            ->where('salon_id', $salonId)
+            ->whereNotNull('google_event_id')
+            ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
+            ->update(['google_event_id' => null]);
     }
 
     public function create(int $salonId, array $data): Reservation
