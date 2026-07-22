@@ -214,16 +214,21 @@ class ReservationRepository
     }
 
     /**
-     * 接続解除・モード切替時に対象範囲の google_event_id を null クリアする
+     * 接続解除・モード切替・カレンダー変更時に対象範囲の google_event_id を null クリアする
      * （イベントIDはカレンダー単位のスコープ。接続が消えた時点で参照は無効になる）。
      * 論理削除済みの予約も対象に含める（旧イベントの孤児参照を残さない）。
+     * $exceptIds は送信同期ジョブへ委ねた予約（ジョブが実行時の google_event_id で
+     * 旧カレンダーのイベントを削除するため、先にクリアすると旧イベントが孤児として残る）。
+     *
+     * @param  array<int, int>  $exceptIds
      */
-    public function clearGoogleEventIdForScope(int $salonId, ?int $userId): int
+    public function clearGoogleEventIdForScope(int $salonId, ?int $userId, array $exceptIds = []): int
     {
         return Reservation::withTrashed()
             ->where('salon_id', $salonId)
             ->whereNotNull('google_event_id')
             ->when($userId !== null, fn ($query) => $query->where('user_id', $userId))
+            ->when($exceptIds !== [], fn ($query) => $query->whereNotIn('id', $exceptIds))
             ->update(['google_event_id' => null]);
     }
 

@@ -497,8 +497,10 @@ class GoogleCalendarApiTest extends TestCase
             fn ($job) => $job->reservationId === $reservation->id && $job->previousCalendarId === 'primary',
         );
 
-        // (5) google_event_id は対象範囲全体を null クリアする（窓外・非 reserved も含む）
-        $this->assertNull($reservation->fresh()->google_event_id);
+        // (5) ジョブ対象外（窓外・非 reserved）の旧カレンダー参照は null クリアする。
+        // ジョブ対象の窓内 reserved は保持する — ジョブが実行時に google_event_id で
+        // 旧カレンダーのイベントを削除するため、先にクリアすると孤児が残る
+        $this->assertSame('evt-old', $reservation->fresh()->google_event_id);
         $this->assertNull($outOfWindow->fresh()->google_event_id);
         // 窓外予約は初回送信同期の対象外（ジョブは投入されない）
         Queue::assertNotPushed(

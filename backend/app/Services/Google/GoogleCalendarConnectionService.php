@@ -206,10 +206,12 @@ class GoogleCalendarConnectionService
             $this->busyBlocks->deleteForConnection($connection->id);
 
             // 送信同期: 同期窓内 reserved の旧カレンダーイベントを削除 → 新カレンダーへ書き直す
-            $this->dispatchInitialSync($connection->refresh(), $previousCalendarId);
+            $dispatchedIds = $this->dispatchInitialSync($connection->refresh(), $previousCalendarId);
 
-            // 対象範囲全体の google_event_id を null クリアする（窓外・非 reserved の旧カレンダー参照も無効化する）
-            $this->reservations->clearGoogleEventIdForScope($connection->salon_id, $connection->user_id);
+            // ジョブ対象外（窓外・非 reserved）の旧カレンダー参照を null クリアする。
+            // ジョブ対象を除外するのは、ジョブが実行時に予約を再読込して google_event_id で
+            // 旧カレンダーのイベントを削除するため（先にクリアすると削除が走らず孤児が残る）
+            $this->reservations->clearGoogleEventIdForScope($connection->salon_id, $connection->user_id, $dispatchedIds);
         });
 
         return $connection->refresh();
@@ -376,8 +378,11 @@ class GoogleCalendarConnectionService
 
     /**
      * 初回同期を投入する（受信 = 全同期 / 送信 = 同期窓内の reserved な対象予約の書き出し）。
+     * 送信同期ジョブを投入した予約IDを返す（呼び出し側が一括クリアの除外対象にする）。
+     *
+     * @return array<int, int>
      */
-    private function dispatchInitialSync(GoogleCalendarConnection $connection, ?string $previousCalendarId = null): void
+    private function dispatchInitialSync(GoogleCalendarConnection $connection, ?string $previousCalendarId = null): array
     {
         // 受信: sync_token が null のため受信同期ジョブは全同期になる
         SyncGoogleCalendarJob::dispatch($connection->id);
@@ -394,6 +399,8 @@ class GoogleCalendarConnectionService
         foreach ($reservations as $reservation) {
             SyncReservationToGoogleJob::dispatch($reservation->id, null, $previousCalendarId);
         }
+
+        return $reservations->pluck('id')->all();
     }
 
     /**
