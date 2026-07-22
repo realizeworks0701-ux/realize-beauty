@@ -78,21 +78,33 @@
 
 ---
 
-## Reservation（フェーズ2・進行中）
+## Reservation（フェーズ2・完了）
 
 > 設計: [docs/requirements/booking.md](../requirements/booking.md) / [ADR-024](../decisions/ADR-024-line-integration.md)
 > LINE予約（ミニアプリ）は採用せず backlog（LIFF/ミニアプリの再検討）へ移動
 
-- [ ] Web予約ページ
-- [ ] LINE連携（サロン別チャネル接続）
-- [ ] 連携コードによる顧客紐付け
-- [ ] LINE通知（予約確定 push・前日リマインダー）
+- [x] Web予約ページ
+- [x] LINE連携（サロン別チャネル接続）
+- [x] 連携コードによる顧客紐付け
+- [x] LINE通知（予約確定 push・前日リマインダー）
 
 ---
 
-## Reservation（フェーズ3）
+## Reservation（フェーズ3・進行中）
 
-- [ ] Googleカレンダー同期
+> 設計: [docs/requirements/google-calendar.md](../requirements/google-calendar.md) / [ADR-025](../decisions/ADR-025-google-calendar-sync.md)
+> Googleカレンダー双方向同期。接続単位は「スタッフ別 / サロン共有1本」をサロンごとに選択
+> Google 審査の申請作業はデプロイ時の手続き（未審査でも100ユーザーまで動作するため実装のブロッカーではない）
+
+- [ ] Google OAuth 接続・解除（スタッフ別 / サロン共有）
+- [ ] 対象カレンダーの選択（既定 primary）
+- [ ] 送信同期（予約 作成・変更・キャンセル → Google イベント。接続時の既存予約の書き出しを含む）
+- [ ] 受信同期（push 通知 + syncToken 増分同期。410 Gone と日次の同期窓前進で全同期）
+- [ ] 外部予定の busy ブロック化と空き枠・公開予約への反映
+- [ ] RB 由来イベントの移動・削除の取り込み（競合時は RB を真実として巻き戻し）
+- [ ] 定期コマンド（watch チャネルの張り直し・同期窓の日次前進）
+- [ ] トークン更新・失効時の再接続導線
+- [ ] 予約カレンダーへの「外部予定」表示
 
 ---
 

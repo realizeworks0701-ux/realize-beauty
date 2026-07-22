@@ -30,7 +30,7 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 |---------|------|-----------|
 | フェーズ1 | 予約コア＝メニュー管理・営業時間・予約CRUD・サロン側予約カレンダー・ダッシュボード「今日の予約」 | ✓ |
 | フェーズ2 | 公開Web予約ページ・LINE連携（サロン別チャネル接続）・連携コードによる顧客紐付け・前日リマインダー（詳細は [booking.md](booking.md) / [ADR-024](../decisions/ADR-024-line-integration.md)。LINEミニアプリは不採用） | 対象外 |
-| フェーズ3 | Googleカレンダー同期 | 対象外 |
+| フェーズ3 | Googleカレンダー双方向同期＝OAuth接続（スタッフ別 / サロン共有）・送信同期・受信同期・外部予定の busy 反映（詳細は [google-calendar.md](google-calendar.md) / [ADR-025](../decisions/ADR-025-google-calendar-sync.md)） | 対象外 |
 
 ---
 

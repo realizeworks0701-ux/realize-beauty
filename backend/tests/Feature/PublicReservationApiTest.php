@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Enums\GoogleCalendarMode;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use App\Jobs\SendBookingConfirmationJob;
+use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Customer;
 use App\Models\LineSetting;
 use App\Models\Menu;
@@ -475,6 +477,29 @@ class PublicReservationApiTest extends TestCase
         $this->book($salon)->assertCreated();
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_dispatches_google_sync_job_when_calendar_mode_configured(): void
+    {
+        [$salon] = $this->createContext();
+        $salon->update(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+
+        $this->book($salon)->assertCreated();
+
+        $reservationId = Reservation::sole()->id;
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservationId,
+        );
+    }
+
+    public function test_does_not_dispatch_google_sync_job_when_mode_not_configured(): void
+    {
+        [$salon] = $this->createContext(); // google_calendar_mode = null
+
+        $this->book($salon)->assertCreated();
+
+        Queue::assertNotPushed(SyncReservationToGoogleJob::class);
     }
 
     public function test_returns_404_for_inactive_salon(): void

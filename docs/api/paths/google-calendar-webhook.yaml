@@ -1,0 +1,81 @@
+# Google カレンダー Webhook（Google 専用・prefix /api）
+# path item の servers でルートの /api/v1 を上書きする。
+
+googleCalendarWebhook:
+  servers:
+    - url: http://localhost/api
+      description: Google Calendar Webhook（Local Development）
+  post:
+    tags:
+      - GoogleCalendarWebhook
+    summary: Googleカレンダー Webhook受信
+    security: []
+    description: >
+      Google カレンダー（push 通知）専用の受信エンドポイント（全サロン共通の1本・認証なし・throttle なし）。
+      watch チャネル作成時に address として `{API_URL}/api/google/calendar/webhook` を登録する。
+      通知は「変更があった」ことしか伝えず、変更内容はボディに含まれない（ボディは空）。
+      よって X-Goog-Channel-ID で接続を特定し、X-Goog-Channel-Token を
+      google_calendar_connections.channel_token（watch 作成時に発行した秘密値）と照合して検証する。
+      あわせて X-Goog-Resource-ID を channel_resource_id と照合する（検証段数を増やすため）。
+      **未知の channel_id、channel_token 不一致、または X-Goog-Resource-ID が channel_resource_id と不一致の場合は
+      即 200 で終了**（ログのみ。Google のリトライ暴走防止。フェーズ2の LINE webhook と同じ方針）。
+      X-Goog-Resource-State: sync（チャネル開設直後の疎通通知）は何もせず 200（no-op）。
+      検証を通ったら当該接続の増分同期ジョブを投入して 200 を返す
+      （ジョブは接続単位で **ShouldBeUniqueUntilProcessing**〈`uniqueId` = 接続ID、`uniqueFor` = 10分〉とする。
+      ShouldBeUnique は採用しない: 同ロックはジョブの**処理完了まで**保持されるため、同期実行中に届いた push 通知が
+      捨てられ、次の変更が起きるまで通知が来ない以上その変更は反映されないまま滞留し、
+      外部予定が busy にならないまま公開予約が入る〈本フェーズが防ごうとしている事故そのもの〉。
+      ShouldBeUniqueUntilProcessing は処理開始時にロックを解放するため、実行中の通知は次の1本としてキューイングされる。
+      `uniqueFor` を必ず定義する理由: 未定義だとロック期間が 0 と解釈されて**無期限ロック**になり、
+      ワーカーの異常終了で当該接続の同期が恒久的に停止するため）。
+      増分同期は events.list に保存済み syncToken **のみ**を渡して差分取得し（singleEvents=true で繰り返し予定を実体展開。
+      syncToken は timeMin / timeMax / q / orderBy 等の絞り込みと**併用できない**）、
+      **全ページを辿って適用・コミットした後に** nextSyncToken を保存する（nextSyncToken は最終ページにのみ返る）。
+      syncToken 失効（HTTP 410 Gone）時は保存済み syncToken を捨てて全同期し直す。
+      レスポンスは検証失敗・処理内容にかかわらず常に 200 を返す。
+    operationId: receiveGoogleCalendarWebhook
+    parameters:
+      - name: X-Goog-Channel-ID
+        in: header
+        required: true
+        description: watch チャネル作成時に指定したチャネルID（google_calendar_connections.channel_id と照合して接続を特定する。未知なら即 200）
+        schema:
+          type: string
+      - name: X-Goog-Channel-Token
+        in: header
+        required: true
+        description: watch チャネル作成時に指定した検証用の秘密値（google_calendar_connections.channel_token と照合。不一致なら即 200）
+        schema:
+          type: string
+      - name: X-Goog-Resource-ID
+        in: header
+        required: true
+        description: >
+          監視対象リソースの識別子（channels.stop に必要な値として channel_resource_id に保存済み）。
+          受信時は channel_resource_id と照合し、不一致なら未知チャネルと同じく即 200 で終了（ログのみ）
+        schema:
+          type: string
+      - name: X-Goog-Resource-State
+        in: header
+        required: true
+        description: >
+          通知種別。sync = チャネル開設直後の疎通通知（何もせず 200）。
+          exists = 変更あり（増分同期ジョブを投入する）
+        schema:
+          type: string
+          example: "exists"
+      - name: X-Goog-Message-Number
+        in: header
+        required: false
+        description: チャネルごとの通知連番（ログ用）
+        schema:
+          type: integer
+      - name: X-Goog-Resource-URI
+        in: header
+        required: false
+        description: 監視対象リソースのバージョン付きURI（ログ用）
+        schema:
+          type: string
+    responses:
+      '200':
+        description: "受信成功（ボディなし。未知の channel_id・channel_token 不一致・resource-id 不一致・resource-state=sync を含め常に 200）"

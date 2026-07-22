@@ -84,6 +84,11 @@ const router = createRouter({
       name: 'settings-line',
       component: () => import('@/pages/settings/LineSettingsPage.vue'),
     },
+    {
+      path: '/settings/google-calendar',
+      name: 'settings-google-calendar',
+      component: () => import('@/pages/settings/GoogleCalendarSettingsPage.vue'),
+    },
     // ---- 公開ルート（認証ガード対象外。顧客向けのため管理画面へは誘導しない） ----
     {
       path: '/booking/cancel/:token',

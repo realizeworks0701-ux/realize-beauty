@@ -1,0 +1,407 @@
+googleCalendar:
+  get:
+    tags:
+      - GoogleCalendar
+    summary: Googleカレンダー連携設定取得
+    description: >
+      自サロンの Google カレンダー連携設定（モード + 接続一覧）を返す。
+      各接続はメールアドレス・対象カレンダー・状態・最終同期日時のみを返し、
+      access_token / refresh_token / sync_token / channel_token 等の認証情報・同期内部状態は
+      マスク表示も含め一切含めない。
+      モードが未設定でも 404 にはせず、mode=null + connections=[] を返す（設定画面の初期表示用）。
+      status=needs_reconnect の接続は再接続を促す表示の対象とする（refresh_token 失効時にこの状態になり、同期ジョブは打ち切られる）。
+    operationId: getGoogleCalendarSettings
+    responses:
+      '200':
+        description: "Googleカレンダー連携設定取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/GoogleCalendarSettingsResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+googleCalendarBusyBlocks:
+  get:
+    tags:
+      - GoogleCalendar
+    summary: 外部予定（busyブロック）一覧取得
+    description: >
+      期間内の外部予定（busy ブロック）を返す（予約カレンダーの「外部予定」表示用）。
+      from / to は GET /reservations と同一の指定（salon_timezone の日付境界で
+      `[from 00:00, to 24:00)` として解釈する）であり、予約カレンダーは同じ期間で本APIと
+      GET /reservations を並行して呼び出す。
+      **レスポンスは id / start_at / end_at / user_id のみ**を返し、タイトル・説明・出席者等の
+      **内容は一切返さない**。busy ブロックはそれらを保存していないため（プライバシー配慮。ADR-025 §7）、
+      返せる情報が原理的に存在しない（id はリソース識別子であり、内容ではない）。
+      user_id は busy が塞ぐスタッフを示し、**null は shared モード（サロン全体を塞ぐ）**を意味する。
+      Google カレンダー未連携のサロン、および同期窓（現在〜salon_timezone の本日+61日 00:00）の外の期間は
+      常に空配列を返す（busy ブロックは同期窓内しか保持しない）。
+      **保存済みの値のみを返し、Google API は呼ばない**（表示のたびに外部API呼び出しが走るのを避ける）。
+      GET /reservations に同梱せず独立したエンドポイントとするのは、両者がスキーマも生存期間も異なり
+      （予約は業務レコード・busy は同期窓内のキャッシュ）、予約リソースへ内容の無い行を混ぜないため。
+    operationId: listGoogleCalendarBusyBlocks
+    parameters:
+      - $ref: "../components/parameters.yaml#/ReservationFrom"
+      - $ref: "../components/parameters.yaml#/ReservationTo"
+    responses:
+      '200':
+        description: "外部予定一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/BusyBlockCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー（to が from より前 / 期間が31日を超える / 日付形式不正）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+googleCalendarMode:
+  put:
+    tags:
+      - GoogleCalendar
+    summary: 接続モード設定
+    description: >
+      接続単位のモード（per_staff / shared）を salons.google_calendar_mode に保存する。
+      per_staff は各スタッフが自分の Google アカウントを接続し、担当予約のみ自分のカレンダーへ書く
+      （カレンダー上の RB 以外の予定はそのスタッフの空き枠を塞ぐ）。
+      shared はオーナーが1アカウントだけ接続し、全スタッフの予約を1本のカレンダーへ書く
+      （イベント題名に担当スタッフ名を含める。RB 以外の予定はサロン全体の空き枠を塞ぐ）。
+      **現在と異なるモードへ変更する場合、既存の接続をすべて解除する**
+      （各接続で channels.stop → refresh_token の revoke → busy ブロック削除 →
+      対象範囲の予約の `google_event_id` を null にクリア → 接続の物理削除の5手順。
+      channels.stop / revoke の失敗はログのみで続行する〈best-effort〉。
+      DELETE /google-calendar/connections/{id} と同じ副作用セット）。
+      2つのモードは接続の所有者（user_id の有無）と busy の適用範囲が異なるため、接続を引き継げないことによる。
+      google_event_id をクリアするのは、モード切替後に別カレンダーへ接続し直すと旧イベントIDが指す先が
+      存在せず（イベントIDはカレンダー単位のスコープ）送信同期が 404 で恒久的に失敗するため。
+      UI の確認ダイアログにこの影響を明記する。
+      現在と同一モードの指定は何もしない（解除も行わない）。
+      レスポンスは GET /google-calendar と同形式（モード変更時の connections は空配列）。
+    operationId: updateGoogleCalendarMode
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/google-calendar.yaml#/UpdateModeRequest"
+    responses:
+      '200':
+        description: "接続モード設定成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/GoogleCalendarSettingsResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー（mode が per_staff / shared 以外）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+googleCalendarAuthUrl:
+  post:
+    tags:
+      - GoogleCalendar
+    summary: OAuth認可URL発行
+    description: >
+      Google OAuth（認可コードフロー）を開始する。
+      推測不能なランダム値 state を発行し、キャッシュへ `state → {salon_id, user_id, mode}` を TTL 10分で保存したうえで、
+      認可 URL を返す（SPA はこの URL へブラウザを遷移させる）。
+      キャッシュキーは state の生値ではなく **`google_oauth_state:{state}` の接頭辞付き**とする
+      （CACHE_STORE=database で全用途のキーが同一テーブルに同居するため、他用途のキーとの衝突を避ける）。
+      state をキャッシュで持つのは、コールバックが Google からのブラウザリダイレクトで Bearer トークンを持たないため
+      （SPA〈Cloudflare Pages〉と API〈Render〉が別オリジンである前提）。
+      scope は `https://www.googleapis.com/auth/calendar.events`（RB 予約の読み書き）と
+      `https://www.googleapis.com/auth/calendar.calendarlist.readonly`（カレンダー一覧取得）。
+      refresh_token を確実に取得するため access_type=offline + prompt=consent を付与する。
+      redirect_uri は API 側の `{API_URL}/api/v1/google-calendar/callback`（client_secret をサーバ側で扱うため）。
+      キャッシュに保存する user_id はモードで決まる: per_staff は認証ユーザーのID、shared は null（サロン共有接続）。
+      モードが未設定（salons.google_calendar_mode = null）の場合は 422（先に PUT /google-calendar/mode が必要）。
+      リクエストボディは不要。
+    operationId: createGoogleCalendarAuthUrl
+    responses:
+      '200':
+        description: "認可URL発行成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/AuthUrlResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "モードが未設定（先に PUT /google-calendar/mode が必要）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+googleCalendarCallback:
+  get:
+    tags:
+      - GoogleCalendar
+    summary: OAuthコールバック
+    security: []
+    description: >
+      **認証なし**のエンドポイント（Google 同意画面からのブラウザリダイレクトのため Bearer トークンが無い。
+      /api/v1 プレフィックス配下だが auth:sanctum の対象外とする）。
+      レスポンスは JSON ではなく **SPA への 302 リダイレクト**を返す。
+      処理順:
+      (1) state をキャッシュ（`google_oauth_state:{state}`）から引いて `{salon_id, user_id, mode}` を復元する
+      （照合後は即削除し単回使用とする）。
+      state が不一致・期限切れ（TTL 10分）・未知の場合は接続処理を行わずエラーとして SPA へ戻す。
+      **復元した mode が現在の `salons.google_calendar_mode` と一致しない場合も接続せず `invalid_state` で戻す**
+      （state の TTL 10分の間に PUT /google-calendar/mode でモードが切り替わると、認可中だったリクエストが
+      現行モードと食い違う接続〈例: per_staff サロンに user_id=null のサロン全体接続〉を作ってしまうため。
+      部分 unique 制約では弾けず、設定画面のどの行にも現れないため解除もできなくなる）。
+      per_staff の場合は復元した user_id が当該サロンの is_active なユーザーであることも確認する（認可中の退職処理に備える）。
+      (2) code をトークンエンドポイントで access_token / refresh_token に交換する（client_secret はサーバ側のみで扱う）。
+      (3) calendarList.list を呼び、`primary: true` のエントリの `id`（＝アカウントのメールアドレス）を
+      google_account_email として取得する（表示用。要求スコープに openid / userinfo.email を含めないため、
+      id_token・userinfo エンドポイントからは取得できない）。
+      (4) 接続を保存する（access_token / refresh_token は encrypted cast で暗号化保存。calendar_id はリテラル primary、
+      status=active）。同一 (salon_id, user_id) の接続が既にある場合は同じ行を更新する（＝再接続。
+      部分 unique 制約 `(salon_id, user_id) WHERE user_id IS NOT NULL` / `(salon_id) WHERE user_id IS NULL` による）。
+      **既存行を更新する場合は先に旧接続の後始末を行う**: 旧チャネルへ channels.stop（失敗はログのみで続行。
+      channel_id / channel_resource_id を上書きすると停止手段が失われるため上書き前に打つ）→ sync_token を null に →
+      **当該接続の busy ブロックを全削除**（行を再利用するため FK の cascade delete は発火せず、受信同期は upsert のみで
+      旧アカウント由来のイベントは二度と応答に現れないため、実在しない予定が恒久的に空き枠を塞ぐ）。
+      さらに **google_account_email または calendar_id が旧値と異なる場合**は、当該接続の対象範囲の予約の
+      `google_event_id` を null にクリアする（イベントIDはカレンダー単位のスコープであり、旧カレンダーのIDで
+      新カレンダーへ events.update を投げると 404 になるため。旧カレンダー上のイベントは削除しない）。
+      (5) 対象カレンダーへ watch チャネルを開始する（id / token / address を指定し、resourceId / expiration を保存）。
+      (6) **初回同期は受信・送信の両方**のジョブを投入する。
+      受信 = syncToken 無しの全同期（timeMin=現在・timeMax=**同期窓の終端 = salon_timezone の本日+61日 00:00**
+      〈＝本日+60日の終日終端。RB の予約可能範囲と一致〉・singleEvents=true）による busy の取り込み
+      → 全ページ適用・コミットの後に nextSyncToken を保存。
+      送信 = **同期窓内の status=reserved な対象予約**（per_staff は当該スタッフ担当、shared は全スタッフ）の
+      書き出し（送信側を投入しないと、接続前に登録済みの未来の予約が Google に一切現れない）。
+      既に `google_event_id` を持つ予約は、当該イベントが対象カレンダーに存在すれば更新、
+      存在しなければ作成し直して ID を差し替える。
+      成功時は `{FRONTEND_URL}/settings/google-calendar?connected=1`、失敗時は
+      `{FRONTEND_URL}/settings/google-calendar?error={code}` へ 302 する。
+    operationId: googleCalendarCallback
+    parameters:
+      - name: code
+        in: query
+        required: false
+        description: 認可コード（同意された場合に Google が付与する。error 付きで戻る場合は無い）
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: true
+        description: >
+          POST /google-calendar/auth-url が発行しキャッシュへ保存した推測不能なランダム値（TTL 10分・単回使用）。
+          `{salon_id, user_id, mode}` の復元キーであり、CSRF 対策も兼ねる。不一致・期限切れは接続せずエラーとして SPA へ戻す
+        schema:
+          type: string
+      - name: error
+        in: query
+        required: false
+        description: Google 側のエラー（同意画面で拒否された場合の access_denied 等）
+        schema:
+          type: string
+    responses:
+      '302':
+        description: >
+          SPA の設定画面へリダイレクト。
+          成功時 `{FRONTEND_URL}/settings/google-calendar?connected=1`、
+          失敗時 `{FRONTEND_URL}/settings/google-calendar?error={code}`
+          （code: invalid_state = state 不一致・期限切れ・認可中のモード変更・接続先スタッフが無効、
+          access_denied = 同意画面で拒否、
+          exchange_failed = トークン交換失敗、connect_failed = 接続保存・watch 開始の失敗）
+        headers:
+          Location:
+            description: リダイレクト先（`{FRONTEND_URL}` は新設の設定値）
+            schema:
+              type: string
+              example: "https://app.example.com/settings/google-calendar?connected=1"
+
+googleCalendarConnectionCalendars:
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: 接続ID（google_calendar_connections.id・自サロンの接続のみ）
+      schema:
+        type: integer
+  get:
+    tags:
+      - GoogleCalendar
+    summary: カレンダー一覧取得
+    description: >
+      接続アカウントが参照できるカレンダー一覧を Google の calendarList.list から取得して返す（対象カレンダーの選択UI用）。
+      primary を先頭に、以降は summary 昇順で返す。
+      接続の calendar_id がリテラル `primary` の場合、現在の選択は `primary: true` のエントリに相当する（選択UIの照合用）。
+      access_token が期限切れの場合は refresh_token で更新してから呼び出す。
+      **接続の検索条件に salon_id と所有者条件を含める**（下記）。条件に合わない接続IDは存在秘匿のため 404。
+      per_staff モードの接続（user_id IS NOT NULL）は **user_id = 認証ユーザー**の接続のみ取得できる。
+      本エンドポイントは他人の OAuth トークンで calendarList.list を代理実行するものであり、
+      カレンダー名には私的な情報（通院・副業等）が含まれうるため、同僚には開示しない
+      （busy ブロックにタイトルを保存しないのと同じプライバシー境界。ADR-025 §7）。
+      shared モードの接続（user_id IS NULL）は PUT /google-calendar/mode と同じく owner / manager のみとする。
+      status=needs_reconnect の接続（refresh_token 失効・取り消し済み）は Google を呼ばず 422 とし、再接続を促す。
+    operationId: listGoogleCalendarConnectionCalendars
+    responses:
+      '200':
+        description: "カレンダー一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/GoogleCalendarListResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "自サロンかつ操作権限のある接続が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "接続が needs_reconnect 状態（再接続が必要）/ Google API エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+googleCalendarConnection:
+  parameters:
+    - name: id
+      in: path
+      required: true
+      description: 接続ID（google_calendar_connections.id・自サロンの接続のみ）
+      schema:
+        type: integer
+  put:
+    tags:
+      - GoogleCalendar
+    summary: 同期対象カレンダー変更
+    description: >
+      接続の同期対象カレンダー（calendar_id）を変更する。
+      1接続 = 1カレンダーであり、同一カレンダーに対して書き込み（RB の予約）と読み取り（RB 以外の予定 = busy）の両方を行う。
+      **変更に伴い**: (1) sync_token を破棄する（カレンダーが変わると増分同期の連続性が無くなるため）
+      (2) 旧カレンダーの watch チャネルを channels.stop で停止し、新カレンダーへ張り直す
+      (3) 当該接続の busy ブロックを全削除し、新カレンダーの内容で再構築する（全同期ジョブを投入）
+      (4) **旧カレンダーの RB 由来イベントを削除する**（クリア前の `google_event_id` を用いる）
+      (5) 当該接続の対象範囲の予約（per_staff は当該スタッフ担当、shared はサロン全体）の `google_event_id` を
+      null にクリアする（Google のイベントIDは**カレンダー単位のスコープ**であり、旧カレンダーのIDのまま
+      新カレンダーへ events.update を投げると 404 になって送信同期が恒久的に失敗するため）
+      (6) **新カレンダーへ初回送信同期で書き直す**（同期窓内の status=reserved な対象予約を insert し直す）。
+      **旧イベントを削除する点が DELETE /google-calendar/connections/{id}〈Google 側のイベントを残す〉と異なるのは意図的**:
+      カレンダー変更は同一アカウント内の移し替えであり、旧カレンダーに残ったマーカー付きの孤児イベントを
+      スタッフが手動削除すると、受信同期がそれを「RB 由来イベントの削除」と解釈して**生きた予約を cancelled にする**
+      事故経路になるため（接続解除ではそもそも受信同期が止まるため、この経路は生じない）。
+      既定かつ推奨は primary。専用カレンダーを選ぶと私用予定を読めなくなり busy 反映が働かない旨を UI に明記する。
+      calendar_id が **リテラル `primary`** でも
+      **calendarList.list が返す id のいずれか**でもない場合は 422
+      （calendarList.list は `primary` という id を返さないため、リテラルを明示的に許可する。
+      リテラル `primary` と `primary: true` のエントリの実ID〈＝アカウントのメールアドレス〉は同一カレンダーを指すが、
+      指定された値をそのまま保存し正規化は行わない）。
+      **接続の検索条件に salon_id と所有者条件を含める**: per_staff モードの接続（user_id IS NOT NULL）は
+      user_id = 認証ユーザーの接続のみ変更でき、shared モードの接続（user_id IS NULL）は owner / manager のみ。
+      条件に合わない接続IDは存在秘匿のため 404
+      （他スタッフの対象カレンダーを空のカレンダーへ差し替えて busy 反映を黙って無効化されることを防ぐ）。
+    operationId: updateGoogleCalendarConnection
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/google-calendar.yaml#/UpdateConnectionRequest"
+    responses:
+      '200':
+        description: "同期対象カレンダー変更成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/google-calendar.yaml#/GoogleCalendarConnectionResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "自サロンかつ操作権限のある接続が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"
+      '422':
+        description: "バリデーションエラー（calendar_id がリテラル primary でも calendarList の id でもない / 接続が needs_reconnect 状態 / Google API エラー）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+  delete:
+    tags:
+      - GoogleCalendar
+    summary: 接続解除
+    description: >
+      接続を解除する。副作用は次の5手順:
+      (1) channels.stop で watch チャネルを停止する
+      (2) Google の revoke エンドポイントへ refresh_token を送出し、Google 側の grant を失効させる
+      （DB から消すだけでは発行済み refresh_token が Google 側で有効なまま残るため）
+      (3) 当該接続の busy ブロックを削除する
+      (4) 対象範囲の予約の `google_event_id` を null にクリアする
+      (5) 接続を**物理削除**する
+      （SoftDelete ではない。busy ブロックは FK の cascade delete でも消えるが、明示的に削除する）。
+      **channels.stop / revoke の失敗はログのみで続行し（best-effort）、RB 側のレコード削除（3〜5）は必ず完遂する**
+      （status=needs_reconnect の接続では 1・2 は必ず失敗するが、UI は当該状態でも解除を提供するため。
+      失敗で打ち切ると「Google 側でアクセスを取り消した接続は RB からも解除できない」デッドロックになる）。
+      解除後、当該スタッフ（shared モードならサロン全体）の空き枠から外部予定由来の制約が消える。
+      Google カレンダー上に既に作成済みの RB 由来イベントは削除しない（サロン側の記録として残す。
+      **PUT /google-calendar/connections/{id}〈旧カレンダーの RB 由来イベントを削除する〉との非対称は意図的**であり、
+      解除では受信同期も止まるため孤児イベントの手動削除が予約を cancelled にする事故経路が生じないことによる）。
+      ただし **当該接続の対象範囲の予約（per_staff は当該スタッフ担当、shared はサロン全体）の
+      `reservations.google_event_id` は null にクリアする**
+      （残置すると、別アカウント・別カレンダーで再接続した際に旧イベントIDのまま events.update / delete を投げて
+      404 になり、その予約の送信同期が恒久的に失敗するため。イベントIDはカレンダー単位のスコープであり、
+      接続が消えた時点で RB 側の参照は無効になる）。
+      **接続の検索条件に salon_id と所有者条件を含める**: per_staff モードの接続（user_id IS NOT NULL）は
+      user_id = 認証ユーザーの接続のみ解除でき、shared モードの接続（user_id IS NULL）は owner / manager のみ。
+      条件に合わない接続IDは存在秘匿のため 404。
+    operationId: deleteGoogleCalendarConnection
+    responses:
+      '204':
+        description: "接続解除成功"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '404':
+        description: "自サロンかつ操作権限のある接続が存在しない"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/NotFound"

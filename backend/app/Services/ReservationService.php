@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ReservationStatus;
+use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Menu;
 use App\Models\Reservation;
 use App\Repositories\CustomerRepository;
@@ -75,7 +76,7 @@ class ReservationService
         $startAt = Carbon::parse($data['start_at'])->utc();
         $endAt = $startAt->copy()->addMinutes($menu->duration_minutes);
 
-        return DB::transaction(function () use ($salonId, $data, $startAt, $endAt) {
+        $reservation = DB::transaction(function () use ($salonId, $data, $startAt, $endAt) {
             $this->assertNoDoubleBooking($salonId, (int) $data['user_id'], $startAt, $endAt);
 
             return $this->reservationRepository->create($salonId, [
@@ -88,11 +89,16 @@ class ReservationService
                 'note' => $data['note'] ?? null,
             ]);
         });
+
+        $this->dispatchGoogleSync($reservation);
+
+        return $reservation;
     }
 
     public function update(int $salonId, int $id, array $data): Reservation
     {
         $reservation = $this->reservationRepository->findOrFail($salonId, $id);
+        $previousUserId = $reservation->user_id;
 
         if (array_key_exists('customer_id', $data)) {
             $this->assertCustomerExists($salonId, (int) $data['customer_id']);
@@ -126,19 +132,39 @@ class ReservationService
             ['start_at' => $startAt, 'end_at' => $endAt],
         );
 
-        return DB::transaction(function () use ($salonId, $reservation, $attributes, $userId, $startAt, $endAt, $status) {
+        $updated = DB::transaction(function () use ($salonId, $reservation, $attributes, $userId, $startAt, $endAt, $status) {
             if (in_array($status, [ReservationStatus::Reserved, ReservationStatus::Visited], true)) {
                 $this->assertNoDoubleBooking($salonId, $userId, $startAt, $endAt, $reservation->id);
             }
 
             return $this->reservationRepository->update($reservation, $attributes);
         });
+
+        // 担当変更時は変更前スタッフIDを渡し、旧接続のイベント削除→新接続で作成し直させる
+        $this->dispatchGoogleSync($updated, $previousUserId);
+
+        return $updated;
     }
 
     public function delete(int $salonId, int $id): void
     {
         $reservation = $this->reservationRepository->findOrFail($salonId, $id);
         $this->reservationRepository->delete($reservation);
+
+        // 論理削除（誤登録の取り消し）でも Google イベントを削除する（孤児イベントを残さない）
+        $this->dispatchGoogleSync($reservation);
+    }
+
+    /**
+     * 送信同期ジョブを投入する。Google 連携未設定（mode = null）のサロンでは投入しない。
+     */
+    private function dispatchGoogleSync(Reservation $reservation, ?int $previousUserId = null): void
+    {
+        if ($reservation->salon->google_calendar_mode === null) {
+            return;
+        }
+
+        SyncReservationToGoogleJob::dispatch($reservation->id, $previousUserId)->afterCommit();
     }
 
     private function assertCustomerExists(int $salonId, int $customerId): void

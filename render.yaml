@@ -74,3 +74,15 @@ services:
       # AI要約はデプロイ後に有効化（キー未設定でもアプリは動作する）
       - key: OPENAI_API_KEY
         sync: false
+
+      # Google カレンダー連携（ADR-025）。OAuth 資格情報はデプロイ後にダッシュボードで入力する。
+      # Google Cloud の OAuth クライアントに、承認済みリダイレクト URI として
+      # {APP_URL}/api/v1/google-calendar/callback を登録すること。
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # OAuth コールバック後の SPA 戻り先。Cloudflare Pages の URL を入れる
+      # （例 https://realize-beauty.pages.dev）。未設定だと APP_URL にフォールバックし戻れない。
+      - key: FRONTEND_URL
+        sync: false

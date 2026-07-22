@@ -9,6 +9,7 @@ import GlassCard from '@/components/common/GlassCard.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import ReservationFormDialog from '@/components/reservation/ReservationFormDialog.vue'
 import { businessHourService } from '@/services/businessHourService'
+import { googleCalendarService } from '@/services/googleCalendarService'
 import { menuService } from '@/services/menuService'
 import { reservationService } from '@/services/reservationService'
 import { userService } from '@/services/userService'
@@ -16,12 +17,14 @@ import { extractErrorMessage } from '@/utils/apiError'
 import { formatDateJa, formatTime, toDateString } from '@/utils/format'
 import {
   SLOT_MINUTES,
+  busyBlocksForStaff,
   computeDisplayRange,
   hhmmToMinutes,
-  layoutReservations,
+  layoutStaffColumn,
   minutesToHHMM,
 } from '@/utils/reservationCalendar'
-import type { BusinessHour, Menu, Reservation, StaffUser } from '@/types'
+import type { StaffColumnLayout } from '@/utils/reservationCalendar'
+import type { BusinessHour, BusyBlock, Menu, Reservation, StaffUser } from '@/types'
 
 const SLOT_PX = 44
 
@@ -32,6 +35,7 @@ const staff = ref<StaffUser[]>([])
 const businessHours = ref<BusinessHour[]>([])
 const menus = ref<Menu[]>([])
 const reservations = ref<Reservation[]>([])
+const busyBlocks = ref<BusyBlock[]>([])
 
 const initialized = ref(false)
 const loading = ref(false)
@@ -44,17 +48,39 @@ const presetStartAt = ref<Date | null>(null)
 
 let fetchSeq = 0
 
+/**
+ * 外部予定を予約一覧と同じ from/to で取得する。取得失敗は予約業務を止めないため隔離し、
+ * 外部予定を非表示にして Toast 通知するのみとする（docs/ui/reservation.md エラー時挙動）。
+ * 未連携サロンでは空配列が返るため何も描画されない。
+ */
+async function loadBusyBlocks(dateStr: string, seq: number): Promise<void> {
+  try {
+    const blocks = await googleCalendarService.listBusyBlocks(dateStr, dateStr)
+    if (seq !== fetchSeq) return
+    busyBlocks.value = blocks
+  } catch (error) {
+    if (seq !== fetchSeq) return
+    busyBlocks.value = []
+    toast.add({
+      severity: 'warn',
+      summary: extractErrorMessage(error, '外部予定の取得に失敗しました'),
+      life: 3000,
+    })
+  }
+}
+
 async function fetchAll(): Promise<void> {
   const seq = ++fetchSeq
   loading.value = true
   loadError.value = false
+  const dateStr = toDateString(selectedDate.value)
   try {
-    const dateStr = toDateString(selectedDate.value)
     const [users, hours, menuList, reservationList] = await Promise.all([
       userService.list(),
       businessHourService.list(),
       menuService.list({ is_active: true }),
       reservationService.list({ from: dateStr, to: dateStr }),
+      loadBusyBlocks(dateStr, seq),
     ])
     if (seq !== fetchSeq) return
     staff.value = users
@@ -81,9 +107,12 @@ async function fetchReservations(): Promise<void> {
   const seq = ++fetchSeq
   loading.value = true
   loadError.value = false
+  const dateStr = toDateString(selectedDate.value)
   try {
-    const dateStr = toDateString(selectedDate.value)
-    const list = await reservationService.list({ from: dateStr, to: dateStr })
+    const [list] = await Promise.all([
+      reservationService.list({ from: dateStr, to: dateStr }),
+      loadBusyBlocks(dateStr, seq),
+    ])
     if (seq !== fetchSeq) return
     reservations.value = list
   } catch (error) {
@@ -157,6 +186,21 @@ const gridStyle = computed(() => ({
   gridTemplateColumns: `72px repeat(${staff.value.length}, minmax(150px, 1fr))`,
 }))
 
+// 同一スタッフ列の予約と外部予定を種別をまたいでレーン割り当てする。
+// 予約と外部予定が重なる場合も列幅を等分して横並びに表示するため、両者を同じクラスタで扱う。
+const columnLayouts = computed<Record<number, StaffColumnLayout>>(() => {
+  const map: Record<number, StaffColumnLayout> = {}
+  const range = displayRange.value
+  for (const user of staff.value) {
+    const ownReservations = reservations.value.filter(
+      (reservation) => reservation.user.id === user.id,
+    )
+    const ownBusy = busyBlocksForStaff(busyBlocks.value, user.id)
+    map[user.id] = layoutStaffColumn(ownReservations, ownBusy, selectedDate.value, range)
+  }
+  return map
+})
+
 interface PositionedBlock {
   reservation: Reservation
   top: number
@@ -170,8 +214,7 @@ const blocksByStaff = computed<Record<number, PositionedBlock[]>>(() => {
   const map: Record<number, PositionedBlock[]> = {}
   const range = displayRange.value
   for (const user of staff.value) {
-    const own = reservations.value.filter((reservation) => reservation.user.id === user.id)
-    map[user.id] = layoutReservations(own, selectedDate.value).map((block) => {
+    map[user.id] = (columnLayouts.value[user.id]?.reservations ?? []).map((block) => {
       const height = Math.max(((block.endMin - block.startMin) / SLOT_MINUTES) * SLOT_PX - 2, 20)
       const width = 100 / block.laneCount
       return {
@@ -181,6 +224,42 @@ const blocksByStaff = computed<Record<number, PositionedBlock[]>>(() => {
         leftPct: block.lane * width,
         widthPct: width,
         compact: height < SLOT_PX,
+      }
+    })
+  }
+  return map
+})
+
+interface PositionedBusyBlock {
+  block: BusyBlock
+  top: number
+  height: number
+  leftPct: number
+  widthPct: number
+  compact: boolean
+  timeLabel: string
+}
+
+// 外部予定ブロック。shared（user_id=null）は全スタッフ列、per_staff は担当列のみに描画する。
+// 時刻はクランプ後の startMin/endMin を表示し、レンジ全体を覆う（終日・複数日）場合は「終日」と表記する。
+const busyBlocksByStaff = computed<Record<number, PositionedBusyBlock[]>>(() => {
+  const map: Record<number, PositionedBusyBlock[]> = {}
+  const range = displayRange.value
+  for (const user of staff.value) {
+    map[user.id] = (columnLayouts.value[user.id]?.busyBlocks ?? []).map((block) => {
+      const height = Math.max(((block.endMin - block.startMin) / SLOT_MINUTES) * SLOT_PX - 2, 20)
+      const width = 100 / block.laneCount
+      const coversFullRange = block.startMin <= range.startMin && block.endMin >= range.endMin
+      return {
+        block: block.block,
+        top: ((block.startMin - range.startMin) / SLOT_MINUTES) * SLOT_PX + 1,
+        height,
+        leftPct: block.lane * width,
+        widthPct: width,
+        compact: height < SLOT_PX,
+        timeLabel: coversFullRange
+          ? '終日'
+          : `${minutesToHHMM(block.startMin)}〜${minutesToHHMM(block.endMin)}`,
       }
     })
   }
@@ -308,6 +387,22 @@ function onDeleted(): void {
               :aria-label="`${user.name} ${minutesToHHMM(slot.min)} に予約を登録`"
               @click="openCreate(user.id, slot.min)"
             />
+            <!-- 外部予定: グレー・時刻のみ。pointer-events:none で空セルのクリックを吸収せず、
+                 覆われた時間帯からも新規登録できる（管理側は busy でも登録可能） -->
+            <div
+              v-for="block in busyBlocksByStaff[user.id] ?? []"
+              :key="`busy-${block.block.id}`"
+              class="external-block"
+              :style="{
+                top: `${block.top}px`,
+                height: `${block.height}px`,
+                left: `calc(${block.leftPct}% + 2px)`,
+                width: `calc(${block.widthPct}% - 4px)`,
+              }"
+            >
+              <span class="external-label">外部予定</span>
+              <span v-if="!block.compact" class="external-time">{{ block.timeLabel }}</span>
+            </div>
             <button
               v-for="block in blocksByStaff[user.id] ?? []"
               :key="block.reservation.id"
@@ -532,6 +627,47 @@ function onDeleted(): void {
 
 .reservation-block:hover {
   filter: brightness(1.06);
+}
+
+/* 外部予定（Googleカレンダーの RB 以外の予定）。グレー・時刻のみ。
+   pointer-events:none で下の空セルへクリックを透過させる（新規登録を塞がない）。 */
+.external-block {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  z-index: 1;
+  padding: 0.22rem 0.4rem;
+  border-left: 3px solid rgba(154, 141, 145, 0.6);
+  border-radius: 8px;
+  overflow: hidden;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(154, 141, 145, 0.2),
+    rgba(154, 141, 145, 0.2) 6px,
+    rgba(154, 141, 145, 0.32) 6px,
+    rgba(154, 141, 145, 0.32) 12px
+  );
+  font-family: var(--rb-font);
+  color: #63585c;
+  text-align: left;
+  pointer-events: none;
+}
+
+.external-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.external-time {
+  font-size: 0.68rem;
+  opacity: 0.85;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .reservation-block.reserved {

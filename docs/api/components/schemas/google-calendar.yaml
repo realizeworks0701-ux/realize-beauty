@@ -1,0 +1,332 @@
+GoogleCalendarMode:
+  type: string
+  description: >
+    接続単位のモード。
+    per_staff = 各スタッフが自分の Google アカウントを接続し、担当予約のみ自分のカレンダーへ書く（外部予定はそのスタッフの枠を塞ぐ）。
+    shared = オーナーが1アカウントだけ接続し、全スタッフの予約を1本のカレンダーへ書く（外部予定はサロン全体の枠を塞ぐ）。
+    未設定は null。
+
+  enum:
+    - per_staff
+    - shared
+
+  example: per_staff
+
+########################################################
+
+GoogleCalendarConnectionStatus:
+  type: string
+  description: >
+    接続状態。
+    active = 同期稼働中。
+    needs_reconnect = refresh_token が失効・取り消されたため再接続が必要（同期ジョブは打ち切られる）。
+
+  enum:
+    - active
+    - needs_reconnect
+
+  example: active
+
+########################################################
+
+GoogleCalendarConnection:
+  type: object
+  description: >
+    Google カレンダー接続（1接続 = 1 Google アカウントの1カレンダー）。
+    access_token / refresh_token / sync_token / channel_token 等の認証情報・同期内部状態は
+    マスク表示も含め一切レスポンスに含めない（DBには encrypted cast で暗号化保存する）。
+
+  required:
+    - id
+    - user
+    - google_account_email
+    - calendar_id
+    - status
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    user:
+      description: >
+        接続の所有スタッフ。
+        per_staff モードでは接続したスタッフ、shared モード（サロン共有接続）では null。
+      oneOf:
+        - $ref: "./user.yaml#/UserSummary"
+        - type: "null"
+
+    google_account_email:
+      type: string
+      description: >
+        接続した Google アカウントのメールアドレス（**表示用のみ**）。
+        接続直後に calendarList.list の `primary: true` のエントリの `id`（＝アカウントのメールアドレス）から取得して保存する
+        （要求スコープは calendar.events + calendar.calendarlist.readonly の2つのみであり、
+        id_token〈openid 必須〉も userinfo エンドポイント〈userinfo.email 必須〉も使えないため。追加スコープは不要）。
+        Google 側で変更されうるため、認可・接続の照合には使わない
+      example: "misaki.tanaka@example.com"
+
+    calendar_id:
+      type: string
+      description: >
+        同期対象カレンダーのID（既定かつ推奨は primary）。
+        このカレンダーに RB の予約を書き込み、同じカレンダー上の RB 以外の予定を busy として読み取る。
+        **リテラル `primary` はメインカレンダーを指すエイリアス**であり、Google の events / calendarList の各 API が
+        カレンダーID の代わりに解釈する予約語（calendarList.list は `primary` という id を返さず、
+        メインカレンダーの id はアカウントのメールアドレス・メインかどうかは別フィールドの `primary: true` で示す）。
+        RB は接続時の既定値としてこのリテラルを保存し、実IDへの正規化は行わない。
+        選択UIで現在値をハイライトする際は、`primary` は GoogleCalendarListEntry の `primary: true` のエントリと
+        同一カレンダーを指すものとして照合する
+      example: "primary"
+
+    status:
+      $ref: "#/GoogleCalendarConnectionStatus"
+
+    last_synced_at:
+      type: ["string", "null"]
+      format: date-time
+      description: 最終同期日時（増分同期の成功時に更新）。一度も同期していない場合は null
+      example: "2026-07-17T12:34:56+09:00"
+
+########################################################
+
+GoogleCalendarSettings:
+  type: object
+  description: >
+    自サロンの Google カレンダー連携設定。
+    モードが未設定（null）でも 404 にはせず、mode=null + connections=[] を返す（設定画面の初期表示用）。
+
+  required:
+    - mode
+    - connections
+
+  properties:
+
+    mode:
+      description: 接続単位のモード。未設定は null（接続開始前にモード設定が必要）
+      oneOf:
+        - $ref: "#/GoogleCalendarMode"
+        - type: "null"
+
+    connections:
+      type: array
+      description: >
+        接続一覧（id 昇順）。
+        per_staff モードでは接続済みスタッフの数だけ並び、shared モードでは 0 件または 1 件。
+        モード未設定時は常に空配列
+
+      items:
+        $ref: "#/GoogleCalendarConnection"
+
+########################################################
+
+GoogleCalendarSettingsResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/GoogleCalendarSettings"
+
+########################################################
+
+GoogleCalendarConnectionResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/GoogleCalendarConnection"
+
+########################################################
+
+BusyBlock:
+  type: object
+  description: >
+    外部予定（Google カレンダー上の RB 以外の予定）の busy ブロック。
+    **タイトル・説明・出席者等の内容は一切保持しない**（開始・終了時刻のみ。プライバシー配慮）。
+    予約カレンダー上は「外部予定」として時刻のみ・グレー表示する。
+
+  required:
+    - id
+    - start_at
+    - end_at
+    - user_id
+
+  properties:
+
+    id:
+      type: integer
+      example: 1
+
+    start_at:
+      type: string
+      format: date-time
+      description: 開始日時。終日予定は salon_timezone の 00:00 起点
+      example: "2026-07-18T13:00:00+09:00"
+
+    end_at:
+      type: string
+      format: date-time
+      description: >
+        終了日時。終日予定は `end.date`（排他）の salon_timezone 00:00 が入る
+        （複数日にまたがる終日予定も分割せず1ブロックで表現する）
+      example: "2026-07-18T14:00:00+09:00"
+
+    user_id:
+      type: ["integer", "null"]
+      description: >
+        busy が塞ぐスタッフのID。
+        per_staff モードでは接続の所有スタッフ、
+        **shared モードでは null（＝サロン全体を塞ぐ）**
+      example: 1
+
+########################################################
+
+BusyBlockCollection:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+      description: busy ブロック一覧（start_at 昇順）
+
+      items:
+        $ref: "#/BusyBlock"
+
+########################################################
+
+GoogleCalendarListEntry:
+  type: object
+  description: >
+    接続アカウントが参照できるカレンダー（calendarList.list の1件）。
+    対象カレンダーの選択UI用。
+
+  required:
+    - id
+    - summary
+    - primary
+
+  properties:
+
+    id:
+      type: string
+      description: >
+        カレンダーID（PUT /google-calendar/connections/{id} の calendar_id に指定する値）。
+        calendarList.list が返す実IDであり、メインカレンダーの場合はアカウントのメールアドレスになる
+        （リテラル `primary` はここには現れない。primary は API がメインカレンダーの代わりに解釈するエイリアス）
+      example: "misaki.tanaka@example.com"
+
+    summary:
+      type: string
+      description: カレンダー名
+      example: "田中 美咲"
+
+    primary:
+      type: boolean
+      description: >
+        メインカレンダーか。
+        既定かつ推奨の選択肢（専用カレンダーを選ぶと私用予定を読めなくなり busy 反映が働かない）。
+        接続の calendar_id がリテラル `primary` の場合、このエントリが現在の選択に相当する
+      example: true
+
+########################################################
+
+GoogleCalendarListResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: array
+      description: カレンダー一覧（primary を先頭に、以降は summary 昇順）
+
+      items:
+        $ref: "#/GoogleCalendarListEntry"
+
+########################################################
+
+AuthUrlResponse:
+  type: object
+  description: OAuth 認可 URL のレスポンス。SPA はこの URL へブラウザを遷移させる
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - auth_url
+
+      properties:
+
+        auth_url:
+          type: string
+          description: >
+            Google の OAuth 同意画面URL。
+            scope（calendar.events + calendar.calendarlist.readonly）・access_type=offline・prompt=consent・
+            redirect_uri（API 側の `{API_URL}/api/v1/google-calendar/callback`）・
+            state（サーバがキャッシュに保存した推測不能なランダム値・TTL 10分）を含む
+          example: "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&state=..."
+
+########################################################
+
+UpdateModeRequest:
+  type: object
+  description: >
+    接続単位のモード設定リクエスト。
+    現在と異なるモードへ変更する場合、既存の接続をすべて解除する
+    （channels.stop → refresh_token の revoke → busy ブロック削除 →
+    対象範囲の予約の google_event_id を null クリア → 接続の物理削除。
+    DELETE /google-calendar/connections/{id} と同じ副作用セット）。
+
+  required:
+    - mode
+
+  properties:
+
+    mode:
+      $ref: "#/GoogleCalendarMode"
+
+########################################################
+
+UpdateConnectionRequest:
+  type: object
+  description: >
+    同期対象カレンダーの変更リクエスト。
+    変更時は sync_token を破棄し、watch チャネルを張り直して busy ブロックを再構築する。
+    あわせて旧カレンダーの RB 由来イベントを削除し、新カレンダーへ初回送信同期で書き直す。
+
+  required:
+    - calendar_id
+
+  properties:
+
+    calendar_id:
+      type: string
+      description: >
+        変更後のカレンダーID。
+        **リテラル `primary`（メインカレンダーのエイリアス）、または
+        GET /google-calendar/connections/{id}/calendars で取得した id のいずれか**を受け付ける
+        （calendarList.list は `primary` という id を返さないため、リテラルを明示的に許可する）。
+        既定かつ推奨は primary（専用カレンダーを選ぶと私用予定を読めなくなり busy 反映が働かない）。
+        メインカレンダーの実ID（＝アカウントのメールアドレス）が指定された場合もそのまま保存し、
+        リテラル `primary` への読み替えは行わない（どちらも同一カレンダーを指す）
+      example: "primary"

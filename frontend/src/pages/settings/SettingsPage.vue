@@ -135,6 +135,16 @@ function confirmLogout(): void {
             </span>
             <i class="pi pi-angle-right salon-link-arrow" />
           </RouterLink>
+          <RouterLink to="/settings/google-calendar" class="salon-link">
+            <span class="salon-link-icon"><i class="pi pi-calendar" /></span>
+            <span class="salon-link-body">
+              <span class="salon-link-title">Googleカレンダー連携</span>
+              <span class="salon-link-description">
+                Googleカレンダーとの双方向同期・接続単位・対象カレンダーの設定
+              </span>
+            </span>
+            <i class="pi pi-angle-right salon-link-arrow" />
+          </RouterLink>
         </div>
       </GlassCard>
 

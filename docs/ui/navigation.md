@@ -24,8 +24,11 @@ Settings --> MenuSettings
 Settings --> BusinessHoursSettings
 
 Settings --> LineSettings
+
+Settings --> GoogleCalendarSettings
 ```
 
 - ReservationCalendar（/reservations）はサイドバーの「予約」およびダッシュボードの「今日の予約」KPIカードから遷移する
 - 予約の新規登録・編集はカレンダー内のダイアログで完結する（専用ルートは持たない）
 - 公開予約ページ（/booking/:slug、/booking/cancel/:token）は認証外の独立導線のため上記の遷移図には含めない。サロンが外部（リッチメニュー・Instagram・Googleマップ等）に掲載したURLから直接アクセスされる（[public-booking.md](public-booking.md)）
+- GoogleCalendarSettings（/settings/google-calendar）はGoogleの同意画面へ外部遷移し、API のコールバック経由で同ページへ戻る（`?connected=1` / `?error=`）。外部サイトを経由するが遷移先・復帰先はいずれも本ページのため、上記の遷移図では Settings からの1本のみで表す（[settings-google-calendar.md](settings-google-calendar.md)）
