@@ -86,6 +86,35 @@ class GoogleCalendarCommandsTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_renew_channels_establishes_channel_for_connection_without_one(): void
+    {
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), '/events/watch')) {
+                return Http::response(['id' => 'ignored', 'resourceId' => 'new-resource', 'expiration' => '1783036800000']);
+            }
+
+            return Http::response('', 204);
+        });
+
+        // 接続時の watch 開設は best-effort のため、未開設（channel_id が null）の Active 接続が生じうる
+        $connection = GoogleCalendarConnection::factory()->create([
+            'channel_id' => null,
+            'channel_resource_id' => null,
+            'channel_token' => null,
+            'channel_expires_at' => null,
+            'status' => GoogleCalendarConnectionStatus::Active,
+            'token_expires_at' => now()->addHour(),
+        ]);
+
+        $this->artisan('google-calendar:renew-channels')->assertSuccessful();
+
+        $fresh = $connection->fresh();
+        $this->assertNotNull($fresh->channel_id);
+        $this->assertSame('new-resource', $fresh->channel_resource_id);
+        // 旧チャネルが無いので stop は送らない
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/channels/stop'));
+    }
+
     public function test_refresh_sync_clears_sync_token_and_dispatches_full_sync(): void
     {
         Queue::fake();

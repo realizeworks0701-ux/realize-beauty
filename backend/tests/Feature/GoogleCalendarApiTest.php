@@ -265,6 +265,45 @@ class GoogleCalendarApiTest extends TestCase
         Queue::assertPushed(SyncReservationToGoogleJob::class, fn ($job) => $job->reservationId === $reservation->id);
     }
 
+    public function test_callback_succeeds_even_when_watch_fails(): void
+    {
+        // watch 開設は best-effort（webhook は HTTPS + ドメイン所有権確認が前提で、未検証環境では
+        // 必ず失敗する）。失敗しても接続保存・初回同期投入は完遂し、未開設チャネルは
+        // 日次の renew-channels が開設する（ADR-025 §5）
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response([
+                'access_token' => 'new-access-token',
+                'refresh_token' => 'new-refresh-token',
+                'expires_in' => 3600,
+            ]),
+            'www.googleapis.com/calendar/v3/users/me/calendarList*' => Http::response([
+                'items' => [
+                    ['id' => 'owner@example.com', 'primary' => true, 'accessRole' => 'owner'],
+                ],
+            ]),
+            'www.googleapis.com/calendar/v3/calendars/*/events/watch' => Http::response(['error' => 'boom'], 500),
+        ]);
+        Queue::fake();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $reservation = $this->reservation($salon, $user, [
+            'start_at' => now()->addDays(3)->setTime(10, 0),
+            'end_at' => now()->addDays(3)->setTime(11, 0),
+        ]);
+
+        $state = $this->startOAuth();
+        $response = $this->get("/api/v1/google-calendar/callback?code=auth-code&state={$state}");
+
+        $response->assertRedirect(rtrim(config('app.frontend_url'), '/').'/settings/google-calendar?connected=1');
+
+        $connection = GoogleCalendarConnection::where('salon_id', $salon->id)->first();
+        $this->assertNotNull($connection);
+        $this->assertNull($connection->channel_id);
+
+        Queue::assertPushed(SyncGoogleCalendarJob::class, fn ($job) => $job->connectionId === $connection->id);
+        Queue::assertPushed(SyncReservationToGoogleJob::class, fn ($job) => $job->reservationId === $reservation->id);
+    }
+
     public function test_callback_with_invalid_state_redirects_with_error(): void
     {
         $response = $this->get('/api/v1/google-calendar/callback?code=auth-code&state=does-not-exist');

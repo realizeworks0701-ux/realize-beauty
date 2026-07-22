@@ -321,10 +321,23 @@ class GoogleCalendarConnectionService
             $accessToken = $token['access_token'];
             $email = $this->resolvePrimaryEmail($accessToken);
             $connection = $this->saveConnection($salonId, $userId, $token, $email);
-            $this->watch->open($connection, $accessToken);
+
+            // watch 開設は best-effort（カレンダー変更時と同方針）。webhook は HTTPS +
+            // ドメイン所有権確認が前提で、未検証環境では必ず失敗する。ここで打ち切ると
+            // 接続保存済みなのにエラー表示になり状態が食い違う。未開設のチャネルは
+            // 日次の renew-channels が開設し、それまでは初回同期＋日次リフレッシュで動く
+            try {
+                $this->watch->open($connection, $accessToken);
+            } catch (GoogleApiException|GoogleAuthException $e) {
+                Log::warning('Google 接続時の watch 開設に失敗しました。初回同期は投入します。', [
+                    'connection_id' => $connection->id,
+                    'status' => $e instanceof GoogleApiException ? $e->status : null,
+                ]);
+            }
+
             $this->dispatchInitialSync($connection->refresh());
         } catch (\Throwable $e) {
-            Log::warning('Google 接続の保存・watch 開始に失敗しました。', [
+            Log::warning('Google 接続の保存に失敗しました。', [
                 'salon_id' => $salonId,
                 'message' => $e->getMessage(),
             ]);

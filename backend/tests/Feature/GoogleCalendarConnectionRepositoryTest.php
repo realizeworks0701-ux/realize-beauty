@@ -119,6 +119,30 @@ class GoogleCalendarConnectionRepositoryTest extends TestCase
         $this->assertSame($expiring->id, $connections->first()->id);
     }
 
+    public function test_list_expiring_channels_includes_active_connections_without_channel(): void
+    {
+        // 接続時の watch 開設は best-effort のため、未開設（channel_id が null）の Active 接続は
+        // 期限切れ間近と同様に張り直し（開設）対象に含める
+        $withoutChannel = GoogleCalendarConnection::factory()->shared()->create([
+            'salon_id' => $this->salon->id,
+            'channel_id' => null,
+            'channel_resource_id' => null,
+            'channel_token' => null,
+            'channel_expires_at' => null,
+        ]);
+        GoogleCalendarConnection::factory()->needsReconnect()->create([
+            'salon_id' => $this->salon->id,
+            'user_id' => User::factory()->create(['salon_id' => $this->salon->id])->id,
+            'channel_id' => null,
+            'channel_expires_at' => null,
+        ]);
+
+        $connections = $this->repository->listExpiringChannels(Carbon::parse('2026-07-21 00:00', 'Asia/Tokyo'));
+
+        $this->assertCount(1, $connections);
+        $this->assertSame($withoutChannel->id, $connections->first()->id);
+    }
+
     public function test_mark_needs_reconnect_updates_status(): void
     {
         $connection = GoogleCalendarConnection::factory()->shared()->create(['salon_id' => $this->salon->id]);

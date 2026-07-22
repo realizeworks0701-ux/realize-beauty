@@ -90,9 +90,13 @@ class GoogleCalendarConnectionRepository
      */
     public function listExpiringChannels(Carbon $before): Collection
     {
+        // channel_id が null の Active 接続は「watch 未開設のまま接続された」状態
+        // （接続時の watch は best-effort）。期限切れ間近と同様に張り直し対象へ含める
         return GoogleCalendarConnection::where('status', GoogleCalendarConnectionStatus::Active->value)
-            ->whereNotNull('channel_id')
-            ->where('channel_expires_at', '<', $before->copy()->utc())
+            ->where(function ($query) use ($before) {
+                $query->whereNull('channel_id')
+                    ->orWhere('channel_expires_at', '<', $before->copy()->utc());
+            })
             ->orderBy('id')
             ->get();
     }

@@ -339,6 +339,18 @@ push 通知は「次の変更が起きるまで」二度と来ないため、実
 独自の TTL を仮定せず応答の `expiration` をそのまま保存する。
 解除時・接続削除時は `channels.stop` でチャネルを停止する。
 
+#### watch 開設は best-effort（接続・カレンダー変更とも）
+
+`channels.watch` の `address` は **HTTPS かつ Search Console でドメイン所有権を確認済み**
+であることを Google が要求するため、未検証環境（ローカル開発・デプロイ直後の未検証ドメイン）
+では必ず失敗する。接続時・カレンダー変更時の watch 開設が失敗しても**打ち切らず**、
+警告ログのみで接続保存・初回同期投入を完遂する（打ち切ると接続レコードは保存済みなのに
+エラー表示となり状態が食い違う。また push が使えないだけで、初回同期＋日次の
+`refresh-sync` により機能自体は成立する）。
+未開設（`channel_id` が null）の Active 接続は `renew-channels` が期限切れ間近のチャネルと
+同様に拾って開設する（旧チャネルが無ければ `stop` は行わない）。
+これによりドメイン検証の完了後は、翌日の定期実行から push が自動で有効になる。
+
 #### webhook は3段検証
 
 webhook は `POST /api/google/calendar/webhook`（認証なし・throttle なし・`v1` プレフィックス外）。

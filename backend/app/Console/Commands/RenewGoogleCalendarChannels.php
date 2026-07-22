@@ -15,6 +15,8 @@ use Illuminate\Support\Str;
 /**
  * 期限が迫った watch チャネルを張り直す（Google にチャネル更新 API は無い）。
  * 新しい channel_id で watch → 旧チャネルを stop の順とし、無通知の窓を作らない。
+ * 接続時の watch 開設は best-effort のため、未開設（channel_id が null）の Active 接続も
+ * ここで開設する（旧チャネルが無ければ stop は行わない）。
  */
 class RenewGoogleCalendarChannels extends Command
 {
