@@ -1,0 +1,10 @@
+{
+  // Cloudflare Workers Static Assets で SPA を配信する（Pages 統合後の静的サイト配信方式）。
+  // ビルド成果物 dist/ をそのまま配信し、未知パスは index.html を返してクライアントルーティングに委ねる。
+  "name": "realize-beauty",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
