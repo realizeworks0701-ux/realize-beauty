@@ -113,6 +113,11 @@ class GoogleCalendarConnectionService
             ]);
         }
 
+        // shared は1アカウントをサロン全体で共有するため、共有接続の作成・置換は owner / manager のみ許可する
+        if ($mode === GoogleCalendarMode::Shared) {
+            $this->assertCanManageMode($user);
+        }
+
         $state = Str::random(self::STATE_LENGTH);
 
         Cache::put(self::STATE_CACHE_PREFIX.$state, [
@@ -184,13 +189,27 @@ class GoogleCalendarConnectionService
                 'calendar_id' => $calendarId,
                 'sync_token' => null,
             ]);
-            $this->watch->open($connection, $accessToken);
+
+            // watch 開設が失敗しても初回同期は必ず投入する。ここで打ち切ると送信同期が投入されず
+            // 旧カレンダーへ孤児イベントが残ったまま回復不能になるため、失敗はログのみとする
+            // （未確立の watch は日次の renew-channels で張り直される）
+            try {
+                $this->watch->open($connection, $accessToken);
+            } catch (GoogleApiException|GoogleAuthException $e) {
+                Log::warning('カレンダー変更時の watch 開設に失敗しました。初回同期は投入します。', [
+                    'connection_id' => $connection->id,
+                    'status' => $e instanceof GoogleApiException ? $e->status : null,
+                ]);
+            }
 
             // busy を全削除し、全同期（照合削除つき）で新カレンダーの内容に再構築する
             $this->busyBlocks->deleteForConnection($connection->id);
 
-            // 送信同期: 旧カレンダーの RB 由来イベントを削除 → 新カレンダーへ書き直す（previousCalendarId 経路）
+            // 送信同期: 同期窓内 reserved の旧カレンダーイベントを削除 → 新カレンダーへ書き直す
             $this->dispatchInitialSync($connection->refresh(), $previousCalendarId);
+
+            // 対象範囲全体の google_event_id を null クリアする（窓外・非 reserved の旧カレンダー参照も無効化する）
+            $this->reservations->clearGoogleEventIdForScope($connection->salon_id, $connection->user_id);
         });
 
         return $connection->refresh();
@@ -341,14 +360,18 @@ class GoogleCalendarConnectionService
         // 再接続: 行を再利用するため cascade delete が発火しない。旧チャネル停止・sync_token 破棄・busy 全削除を明示する
         $this->watch->stopBestEffort($existing, $token['access_token']);
 
-        // アカウント（メール）が変われば旧カレンダーのイベントIDは無効になるため null クリアする
-        if ($existing->google_account_email !== $email) {
+        // 再接続は calendar_id を primary に戻す。メールまたは calendar_id が旧値と異なれば
+        // 旧カレンダーのイベントIDは新カレンダーに存在せず events.update が 404 になるため null クリアする
+        if ($existing->google_account_email !== $email || $existing->calendar_id !== 'primary') {
             $this->reservations->clearGoogleEventIdForScope($salonId, $userId);
         }
 
         $this->busyBlocks->deleteForConnection($existing->id);
 
-        return $this->connections->update($existing, array_merge($attributes, ['sync_token' => null]));
+        return $this->connections->update($existing, array_merge($attributes, [
+            'calendar_id' => 'primary',
+            'sync_token' => null,
+        ]));
     }
 
     /**
@@ -417,18 +440,31 @@ class GoogleCalendarConnectionService
 
     private function isSelectableCalendar(string $calendarId, string $accessToken): bool
     {
-        // primary はエイリアスであり calendarList には現れないため明示的に許可する
+        // primary はエイリアスであり calendarList には現れないため明示的に許可する（primary は常に owner 権限）
         if ($calendarId === 'primary') {
             return true;
         }
 
         foreach ($this->client->listCalendars($accessToken) as $calendar) {
-            if (($calendar['id'] ?? null) === $calendarId) {
+            // 書き込み権限（writer / owner）のあるカレンダーのみ選べる。
+            // 読み取り専用（reader / freeBusyReader）を選ぶと events.insert が 403 で恒久失敗する
+            if (($calendar['id'] ?? null) === $calendarId && $this->isWritableCalendar($calendar)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * events.insert できる権限（writer / owner）を持つカレンダーか。
+     * 読み取り専用（reader / freeBusyReader）は書き込めないため選択させない。
+     *
+     * @param  array<string, mixed>  $calendar
+     */
+    private function isWritableCalendar(array $calendar): bool
+    {
+        return in_array($calendar['accessRole'] ?? null, ['writer', 'owner'], true);
     }
 
     /**
@@ -441,6 +477,11 @@ class GoogleCalendarConnectionService
 
         foreach ($calendars as $calendar) {
             if (! is_string($calendar['id'] ?? null)) {
+                continue;
+            }
+
+            // 読み取り専用（reader / freeBusyReader）は書き込めないため選択肢に出さない
+            if (! $this->isWritableCalendar($calendar)) {
                 continue;
             }
 

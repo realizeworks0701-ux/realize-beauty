@@ -6,6 +6,7 @@ import {
   hhmmToMinutes,
   layoutBusyBlocks,
   layoutReservations,
+  layoutStaffColumn,
   minutesIntoDay,
   minutesToHHMM,
 } from './reservationCalendar'
@@ -183,5 +184,69 @@ describe('layoutBusyBlocks', () => {
     expect(byId.get(1)?.laneCount).toBe(2)
     expect(byId.get(2)?.laneCount).toBe(2)
     expect(byId.get(1)?.lane).not.toBe(byId.get(2)?.lane)
+  })
+})
+
+describe('layoutStaffColumn', () => {
+  const range = { startMin: 480, endMin: 1200 } // 08:00〜20:00
+
+  it('重ならない予約と外部予定はそれぞれ全幅にする', () => {
+    const { reservations, busyBlocks } = layoutStaffColumn(
+      [reservation({ id: 1, start_at: '2026-07-14T10:00:00', end_at: '2026-07-14T11:00:00' })],
+      [busy({ id: 5, start_at: '2026-07-14T12:00:00', end_at: '2026-07-14T13:00:00' })],
+      day,
+      range,
+    )
+    expect(reservations[0]).toMatchObject({ lane: 0, laneCount: 1 })
+    expect(busyBlocks[0]).toMatchObject({ lane: 0, laneCount: 1 })
+  })
+
+  it('予約と外部予定が重なると種別をまたいで列幅を等分し別レーンにする', () => {
+    const { reservations, busyBlocks } = layoutStaffColumn(
+      [reservation({ id: 1, start_at: '2026-07-14T10:00:00', end_at: '2026-07-14T11:00:00' })],
+      [busy({ id: 5, start_at: '2026-07-14T10:30:00', end_at: '2026-07-14T11:30:00' })],
+      day,
+      range,
+    )
+    expect(reservations[0]?.laneCount).toBe(2)
+    expect(busyBlocks[0]?.laneCount).toBe(2)
+    expect(reservations[0]?.lane).not.toBe(busyBlocks[0]?.lane)
+  })
+
+  it('予約2件と外部予定1件がすべて重なると3等分し全レーンが異なる', () => {
+    const { reservations, busyBlocks } = layoutStaffColumn(
+      [
+        reservation({ id: 1, start_at: '2026-07-14T10:00:00', end_at: '2026-07-14T11:00:00' }),
+        reservation({ id: 2, start_at: '2026-07-14T10:15:00', end_at: '2026-07-14T11:15:00' }),
+      ],
+      [busy({ id: 5, start_at: '2026-07-14T10:30:00', end_at: '2026-07-14T11:30:00' })],
+      day,
+      range,
+    )
+    expect(reservations.every((b) => b.laneCount === 3)).toBe(true)
+    expect(busyBlocks[0]?.laneCount).toBe(3)
+    const lanes = new Set([reservations[0]?.lane, reservations[1]?.lane, busyBlocks[0]?.lane])
+    expect(lanes.size).toBe(3)
+  })
+
+  it('終日の外部予定はレンジ全体にクランプして予約と横並びにする', () => {
+    const { reservations, busyBlocks } = layoutStaffColumn(
+      [reservation({ id: 1, start_at: '2026-07-14T10:00:00', end_at: '2026-07-14T11:00:00' })],
+      [busy({ id: 5, start_at: '2026-07-14T00:00:00', end_at: '2026-07-15T00:00:00' })],
+      day,
+      range,
+    )
+    expect(busyBlocks[0]).toMatchObject({ startMin: 480, endMin: 1200, laneCount: 2 })
+    expect(reservations[0]?.laneCount).toBe(2)
+  })
+
+  it('表示レンジ外の外部予定は含めない', () => {
+    const { busyBlocks } = layoutStaffColumn(
+      [],
+      [busy({ id: 5, start_at: '2026-07-14T06:00:00', end_at: '2026-07-14T07:00:00' })],
+      day,
+      range,
+    )
+    expect(busyBlocks).toHaveLength(0)
   })
 })

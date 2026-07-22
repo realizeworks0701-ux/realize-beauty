@@ -74,8 +74,20 @@ async function fetchAll(): Promise<void> {
   }
 }
 
+/**
+ * 操作 API 成功後の表示更新。ここでの失敗は操作自体の失敗ではないため、
+ * 操作の catch とは分けて別文言で通知する（操作失敗として誤報告しない）。
+ */
 async function reloadSettings(): Promise<void> {
-  applySettings(await googleCalendarService.get())
+  try {
+    applySettings(await googleCalendarService.get())
+  } catch {
+    toast.add({
+      severity: 'warn',
+      summary: '表示の更新に失敗しました。再読み込みしてください',
+      life: 4000,
+    })
+  }
 }
 
 function applySettings(next: GoogleCalendarSettings): void {
@@ -326,16 +338,10 @@ async function saveCalendar(): Promise<void> {
   const calendarId = selectedCalendarId.value
   if (connection === null || calendarId === null) return
   savingCalendar.value = true
+  let ok = false
   try {
     await googleCalendarService.updateConnection(connection.id, { calendar_id: calendarId })
-    await reloadSettings()
-    calendarDialogVisible.value = false
-    toast.add({
-      severity: 'success',
-      summary: '対象カレンダーを変更しました',
-      detail: '新しいカレンダーの予定を取り込み直しています',
-      life: 4000,
-    })
+    ok = true
   } catch (error) {
     toast.add({
       severity: 'error',
@@ -345,6 +351,16 @@ async function saveCalendar(): Promise<void> {
   } finally {
     savingCalendar.value = false
   }
+  if (!ok) return
+
+  calendarDialogVisible.value = false
+  toast.add({
+    severity: 'success',
+    summary: '対象カレンダーを変更しました',
+    detail: '新しいカレンダーの予定を取り込み直しています',
+    life: 4000,
+  })
+  await reloadSettings()
 }
 
 // ---- 連携解除 ----
@@ -365,10 +381,10 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
     rejectProps: { severity: 'secondary', outlined: true },
     accept: async () => {
       disconnectingId.value = connection.id
+      let ok = false
       try {
         await googleCalendarService.deleteConnection(connection.id)
-        await reloadSettings()
-        toast.add({ severity: 'success', summary: '接続を解除しました', life: 3000 })
+        ok = true
       } catch (error) {
         toast.add({
           severity: 'error',
@@ -378,6 +394,10 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
       } finally {
         disconnectingId.value = null
       }
+      if (!ok) return
+
+      toast.add({ severity: 'success', summary: '接続を解除しました', life: 3000 })
+      await reloadSettings()
     },
   })
 }
@@ -415,7 +435,7 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
             option-value="value"
             :allow-empty="false"
             :disabled="savingMode || !isOwnerOrManager"
-            aria-labelledby="gc-mode-label"
+            aria-label="接続単位"
             @update:model-value="onModeChange"
           />
 

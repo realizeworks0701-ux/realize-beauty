@@ -56,7 +56,8 @@ class GoogleEventSyncTest extends TestCase
 
         $this->runSync($reservation->id);
 
-        Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+        // events.update は PUT（全置換）ではなく PATCH（部分更新）で送る
+        Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
             && str_contains($request->url(), '/calendars/primary/events/evt-1'));
     }
 
@@ -158,10 +159,115 @@ class GoogleEventSyncTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer token-new'));
     }
 
+    public function test_shared_mode_staff_change_updates_in_place_without_orphan_or_duplicate(): void
+    {
+        Http::fake(['www.googleapis.com/*' => Http::response(['id' => 'evt-1'])]);
+
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::Shared]);
+        $oldStaff = User::factory()->for($salon)->create(['name' => '田中']);
+        $newStaff = User::factory()->for($salon)->create(['name' => '鈴木']);
+        $menu = Menu::factory()->for($salon)->create(['name' => 'カット', 'duration_minutes' => 60]);
+        $this->connection($salon, null); // shared = 共有接続（user_id null）
+        $reservation = $this->reservation($salon, $newStaff, $menu, ['google_event_id' => 'evt-1']);
+
+        // 担当が oldStaff → newStaff に変わった（shared では書き込み先が変わらない）
+        $this->runSync($reservation->id, previousUserId: $oldStaff->id);
+
+        // 同一イベントを更新するだけ（旧イベントの削除・重複作成・ID差し替えを起こさない）
+        $this->assertSame('evt-1', $reservation->fresh()->google_event_id);
+
+        Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
+            && str_contains($request->url(), '/calendars/primary/events/evt-1')
+            && $request['summary'] === 'カット（鈴木）');
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'DELETE');
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'POST');
+    }
+
+    public function test_staff_change_with_needs_reconnect_old_connection_creates_in_new_without_failing(): void
+    {
+        Http::fake(fn (Request $request) => $request->method() === 'POST'
+            ? Http::response(['id' => 'evt-new'])
+            : Http::response('', 204));
+
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $oldStaff = User::factory()->for($salon)->create();
+        $newStaff = User::factory()->for($salon)->create();
+        $menu = Menu::factory()->for($salon)->create(['duration_minutes' => 60]);
+
+        // 旧接続は needs_reconnect（削除を試みると認証失効でジョブごと落ちる状況）
+        $oldConnection = $this->connection($salon, $oldStaff, [
+            'status' => GoogleCalendarConnectionStatus::NeedsReconnect,
+            'access_token' => 'token-old',
+        ]);
+        $this->connection($salon, $newStaff, ['access_token' => 'token-new']);
+
+        $reservation = $this->reservation($salon, $newStaff, $menu, ['google_event_id' => 'evt-old']);
+
+        $this->runSync($reservation->id, previousUserId: $oldStaff->id);
+
+        // 新カレンダーへ作成し ID を差し替える（ジョブは落ちない）
+        $this->assertSame('evt-new', $reservation->fresh()->google_event_id);
+        // 旧接続が非アクティブのため削除は試みない
+        Http::assertNotSent(fn (Request $request) => $request->method() === 'DELETE');
+        // 新接続（新トークン）へ作成
+        Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+            && $request->hasHeader('Authorization', 'Bearer token-new'));
+        // 旧接続の状態には触れない
+        $this->assertSame(GoogleCalendarConnectionStatus::NeedsReconnect, $oldConnection->fresh()->status);
+    }
+
+    public function test_delete_keeps_google_event_id_when_connection_inactive(): void
+    {
+        Http::fake();
+
+        [$salon, $staff, $menu] = $this->context(GoogleCalendarMode::PerStaff);
+        // 接続が needs_reconnect = 削除を実行できない
+        $this->connection($salon, $staff, ['status' => GoogleCalendarConnectionStatus::NeedsReconnect]);
+        $reservation = $this->reservation($salon, $staff, $menu, [
+            'google_event_id' => 'evt-1',
+            'status' => ReservationStatus::Cancelled,
+        ]);
+
+        $this->runSync($reservation->id);
+
+        // 削除できていないため紐付けを保持する（null クリアすると受信同期で phantom busy 化する）
+        $this->assertSame('evt-1', $reservation->fresh()->google_event_id);
+        Http::assertNothingSent();
+    }
+
+    public function test_auth_retry_refreshes_token_and_retries_once_on_401(): void
+    {
+        $patchCount = 0;
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'token-refreshed', 'expires_in' => 3600]),
+            'www.googleapis.com/*' => function () use (&$patchCount) {
+                $patchCount++;
+
+                // 1回目は 401、refresh 後の再試行（2回目）で成功する
+                return $patchCount === 1
+                    ? Http::response(['error' => ['code' => 401]], 401)
+                    : Http::response(['id' => 'evt-1']);
+            },
+        ]);
+
+        [$salon, $staff, $menu] = $this->context(GoogleCalendarMode::PerStaff);
+        $connection = $this->connection($salon, $staff, ['access_token' => 'token-stale']);
+        $reservation = $this->reservation($salon, $staff, $menu, ['google_event_id' => 'evt-1']);
+
+        $this->runSync($reservation->id);
+
+        // 再試行が成功したためジョブは打ち切られず、接続は active のまま
+        $this->assertSame('evt-1', $reservation->fresh()->google_event_id);
+        $this->assertSame(GoogleCalendarConnectionStatus::Active, $connection->fresh()->status);
+        // 再試行の PATCH は refresh で得た新トークンで送られる
+        Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
+            && $request->hasHeader('Authorization', 'Bearer token-refreshed'));
+    }
+
     public function test_update_404_falls_back_to_insert(): void
     {
         Http::fake(function (Request $request) {
-            if ($request->method() === 'PUT') {
+            if ($request->method() === 'PATCH') {
                 return Http::response(['error' => ['code' => 404]], 404);
             }
 

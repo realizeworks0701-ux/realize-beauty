@@ -113,8 +113,11 @@ UI に明記する。既定かつ推奨は `primary`。
 
 `primary` は「そのアカウントのメインカレンダー」を指す**エイリアス**であり、実 id ではない。
 `calendarList.list` が返すのは実 id（メインカレンダーの場合はアカウントのメールアドレス）である。
-よって `calendar_id` のバリデーションは「**`primary`、または `calendarList` に存在する id**」とする
+よって `calendar_id` のバリデーションは「**`primary`、または `calendarList` に存在し
+`accessRole` が `writer` / `owner` の id**」とする
 （列挙値を calendarList の実 id のみに限ると、既定値 `primary` が自らのバリデーションに違反する）。
+読み取り専用（`reader` / `freeBusyReader`）のカレンダーを選ばせると `events.insert` が
+403 で恒久失敗するため、選択肢からも除外する（`primary` は常に `owner` のため明示許可する）。
 
 **カレンダーの表示名（`summary`）は保持しない**。`calendar_summary` に相当するカラム・
 API フィールドは設けない。名称は Google 側でいつでも変更されうる複製データであり、
@@ -532,6 +535,13 @@ refresh_token が失効・取消（ユーザーが Google 側でアクセス解�
 `calendarList.list` / `channels.watch`・`stop` に限られるため、
 ADR-021（OpenAI 連携）・ADR-024（LINE 連携）と同方針で `Http` クライアントで実装する。
 ベース URL は config から取得し、テストで `Http::fake()` 可能にする。
+
+イベント更新は `events.update`（PUT・全置換）ではなく **`events.patch`（PATCH・部分更新）** を使う。
+PUT は `sequence` の一致を要求するため、会議室応答や他アプリの編集で `sequence` が進んだ
+イベントへの全置換が 400 で恒久失敗する。PATCH は部分更新で `sequence` を要求しないため回避できる
+（対象が存在しない 404 / 410 は insert フォールバックで作り直す）。
+`calendarList.list` は `maxResults=250` + `nextPageToken` で全ページを辿る
+（100 件超のアカウントで 1 ページ目だけ取ると選択肢が欠落する）。
 
 Google は **資格情報が env・トークンが DB** という混在型で、既存の前例
 （`openai` は資格情報も env、`line` は `base_url` のみ config で資格情報は DB）と形が違うため、

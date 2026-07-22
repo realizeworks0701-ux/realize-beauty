@@ -27,6 +27,8 @@ class GoogleClientTest extends TestCase
             'services.google.client_secret' => 'test-client-secret',
         ]);
 
+        Http::preventStrayRequests();
+
         $this->client = new GoogleClient;
     }
 
@@ -106,6 +108,28 @@ class GoogleClientTest extends TestCase
         $this->assertSame('owner@example.com', $calendars[0]['id']);
 
         Http::assertSent(fn (Request $request) => $request->hasHeader('Authorization', 'Bearer '.self::ACCESS_TOKEN));
+    }
+
+    /**
+     * nextPageToken を辿って全ページを結合する（1ページ目だけ取ると100件超のアカウントで欠落する）。
+     */
+    public function test_list_calendars_follows_pagination_and_merges_all_pages(): void
+    {
+        Http::fake([
+            'www.googleapis.com/calendar/v3/users/me/calendarList*' => Http::sequence()
+                ->push(['items' => [['id' => 'owner@example.com', 'primary' => true]], 'nextPageToken' => 'page-2'])
+                ->push(['items' => [['id' => 'other@group.calendar.google.com']]]),
+        ]);
+
+        $calendars = $this->client->listCalendars(self::ACCESS_TOKEN);
+
+        $this->assertCount(2, $calendars);
+        $this->assertSame('owner@example.com', $calendars[0]['id']);
+        $this->assertSame('other@group.calendar.google.com', $calendars[1]['id']);
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'maxResults=250'));
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'pageToken=page-2'));
     }
 
     public function test_list_events_passes_sync_token_and_returns_body(): void
@@ -225,13 +249,17 @@ class GoogleClientTest extends TestCase
             && $request['extendedProperties']['private']['rb_reservation_id'] === '1');
     }
 
-    public function test_update_event_puts_to_event_path(): void
+    /**
+     * events.update は PUT（全置換・sequence 一致要求）ではなく PATCH（部分更新）で送る。
+     * PUT だと他アプリ編集等で sequence が進んだイベントへの更新が 400 で恒久失敗する。
+     */
+    public function test_update_event_patches_event_path(): void
     {
         Http::fake(['www.googleapis.com/*' => Http::response(['id' => 'evt-1'])]);
 
         $this->client->updateEvent(self::ACCESS_TOKEN, 'primary', 'evt-1', ['summary' => '更新後']);
 
-        Http::assertSent(fn (Request $request) => $request->method() === 'PUT'
+        Http::assertSent(fn (Request $request) => $request->method() === 'PATCH'
             && str_contains($request->url(), '/calendars/primary/events/evt-1'));
     }
 

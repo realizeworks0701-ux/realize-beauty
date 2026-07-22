@@ -42,6 +42,8 @@ class GoogleCalendarApiTest extends TestCase
             'services.google.client_id' => 'test-client-id',
             'services.google.client_secret' => 'test-client-secret',
         ]);
+
+        Http::preventStrayRequests();
     }
 
     // ---- GET /google-calendar ----------------------------------------------
@@ -203,6 +205,35 @@ class GoogleCalendarApiTest extends TestCase
         $this->assertNull(Cache::get('google_oauth_state:'.$params['state'])['user_id']);
     }
 
+    public function test_shared_mode_auth_url_forbidden_for_staff(): void
+    {
+        // shared の共有接続の作成・置換は owner / manager のみ。staff の API 直叩きは 403
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::Shared]);
+        $staff = User::factory()->for($salon)->create(['role' => Role::Staff]);
+        Sanctum::actingAs($staff);
+
+        $this->postJson('/api/v1/google-calendar/auth-url')->assertForbidden();
+    }
+
+    public function test_shared_mode_auth_url_allowed_for_manager(): void
+    {
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::Shared]);
+        $manager = User::factory()->for($salon)->create(['role' => Role::Manager]);
+        Sanctum::actingAs($manager);
+
+        $this->postJson('/api/v1/google-calendar/auth-url')->assertOk();
+    }
+
+    public function test_per_staff_mode_auth_url_allowed_for_staff(): void
+    {
+        // per_staff は各自が自分のアカウントを接続するため全ロール可（shared の制限は適用しない）
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $staff = User::factory()->for($salon)->create(['role' => Role::Staff]);
+        Sanctum::actingAs($staff);
+
+        $this->postJson('/api/v1/google-calendar/auth-url')->assertOk();
+    }
+
     // ---- GET /google-calendar/callback -------------------------------------
 
     public function test_callback_saves_connection_starts_watch_and_dispatches_initial_sync(): void
@@ -281,6 +312,59 @@ class GoogleCalendarApiTest extends TestCase
         $this->assertDatabaseCount('google_calendar_connections', 0);
     }
 
+    public function test_callback_reconnect_resets_calendar_to_primary_and_clears_event_ids(): void
+    {
+        // 再接続（同一 salon+user への callback）は calendar_id を primary に戻し、
+        // calendar_id が旧値と異なるため google_event_id をクリアする（メールは同一でも）
+        $this->fakeGoogle();
+        Queue::fake();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $existing = GoogleCalendarConnection::factory()->for($salon)->create([
+            'user_id' => $user->id,
+            'google_account_email' => 'owner@example.com',
+            'calendar_id' => 'team@group.calendar.google.com',
+            'sync_token' => 'stored-token',
+            'channel_id' => 'ch-old',
+            'channel_resource_id' => 'res-old',
+        ]);
+        $busy = GoogleBusyBlock::factory()->forConnection($existing)->create();
+        $reservation = $this->reservation($salon, $user, ['google_event_id' => 'evt-old']);
+
+        $state = $this->startOAuth();
+        $this->get("/api/v1/google-calendar/callback?code=auth-code&state={$state}")
+            ->assertRedirect(rtrim(config('app.frontend_url'), '/').'/settings/google-calendar?connected=1');
+
+        // 同じ行を更新する（新規作成しない）
+        $this->assertDatabaseCount('google_calendar_connections', 1);
+        $existing->refresh();
+        $this->assertSame('primary', $existing->calendar_id);
+        $this->assertNull($existing->sync_token);
+        $this->assertNull($reservation->fresh()->google_event_id);
+        $this->assertDatabaseMissing('google_busy_blocks', ['id' => $busy->id]);
+    }
+
+    public function test_callback_reconnect_same_account_and_primary_keeps_event_ids(): void
+    {
+        // メールも calendar_id（primary）も変わらない再接続では google_event_id を保持する
+        $this->fakeGoogle();
+        Queue::fake();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        GoogleCalendarConnection::factory()->for($salon)->create([
+            'user_id' => $user->id,
+            'google_account_email' => 'owner@example.com',
+            'calendar_id' => 'primary',
+        ]);
+        $reservation = $this->reservation($salon, $user, ['google_event_id' => 'evt-keep']);
+
+        $state = $this->startOAuth();
+        $this->get("/api/v1/google-calendar/callback?code=auth-code&state={$state}")
+            ->assertRedirect(rtrim(config('app.frontend_url'), '/').'/settings/google-calendar?connected=1');
+
+        $this->assertSame('evt-keep', $reservation->fresh()->google_event_id);
+    }
+
     // ---- GET /connections/{id}/calendars -----------------------------------
 
     public function test_calendars_returns_calendar_list_primary_first(): void
@@ -296,6 +380,27 @@ class GoogleCalendarApiTest extends TestCase
         $response->assertJsonPath('data.0.id', 'owner@example.com');
         $response->assertJsonPath('data.0.primary', true);
         $response->assertJsonPath('data.1.id', 'team@group.calendar.google.com');
+
+        // 読み取り専用（reader）カレンダーは書き込めないため一覧に出さない
+        $ids = array_column($response->json('data'), 'id');
+        $this->assertNotContains('holidays@group.v.calendar.google.com', $ids);
+        $response->assertJsonCount(2, 'data');
+    }
+
+    public function test_calendars_excludes_read_only_calendars(): void
+    {
+        $this->fakeGoogle();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $connection = GoogleCalendarConnection::factory()->for($salon)->create(['user_id' => $user->id]);
+
+        $response = $this->getJson("/api/v1/google-calendar/connections/{$connection->id}/calendars");
+
+        $response->assertOk();
+        $this->assertNotContains(
+            'holidays@group.v.calendar.google.com',
+            array_column($response->json('data'), 'id'),
+        );
     }
 
     public function test_calendars_rejects_other_salon_connection_with_404(): void
@@ -360,6 +465,13 @@ class GoogleCalendarApiTest extends TestCase
             'start_at' => now()->addDays(3)->setTime(10, 0),
             'end_at' => now()->addDays(3)->setTime(11, 0),
         ]);
+        // 同期窓の外（本日+90日）の予約は初回送信同期の対象ではないが、旧カレンダーの
+        // google_event_id は無効になるためクリアされなければならない
+        $outOfWindow = $this->reservation($salon, $user, [
+            'google_event_id' => 'evt-out',
+            'start_at' => now()->addDays(90)->setTime(10, 0),
+            'end_at' => now()->addDays(90)->setTime(11, 0),
+        ]);
 
         $response = $this->putJson("/api/v1/google-calendar/connections/{$connection->id}", [
             'calendar_id' => 'team@group.calendar.google.com',
@@ -384,6 +496,71 @@ class GoogleCalendarApiTest extends TestCase
             SyncReservationToGoogleJob::class,
             fn ($job) => $job->reservationId === $reservation->id && $job->previousCalendarId === 'primary',
         );
+
+        // (5) google_event_id は対象範囲全体を null クリアする（窓外・非 reserved も含む）
+        $this->assertNull($reservation->fresh()->google_event_id);
+        $this->assertNull($outOfWindow->fresh()->google_event_id);
+        // 窓外予約は初回送信同期の対象外（ジョブは投入されない）
+        Queue::assertNotPushed(
+            SyncReservationToGoogleJob::class,
+            fn ($job) => $job->reservationId === $outOfWindow->id,
+        );
+    }
+
+    public function test_update_connection_dispatches_initial_sync_even_when_watch_fails(): void
+    {
+        // watch 開設が失敗しても calendar_id 永続化・busy 削除・初回同期（受信＋送信）投入は完遂し、
+        // API は 200 を返す（打ち切ると送信同期が投入されず旧カレンダーへ孤児イベントが残り回復不能になる）
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'a', 'expires_in' => 3600]),
+            'www.googleapis.com/calendar/v3/users/me/calendarList*' => Http::response([
+                'items' => [
+                    ['id' => 'owner@example.com', 'primary' => true, 'accessRole' => 'owner'],
+                    ['id' => 'team@group.calendar.google.com', 'primary' => false, 'accessRole' => 'writer'],
+                ],
+            ]),
+            'www.googleapis.com/calendar/v3/channels/stop' => Http::response('', 204),
+            'www.googleapis.com/calendar/v3/calendars/*/events/watch' => Http::response(['error' => 'boom'], 500),
+        ]);
+        Queue::fake();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $connection = GoogleCalendarConnection::factory()->for($salon)->create([
+            'user_id' => $user->id,
+            'calendar_id' => 'primary',
+            'channel_id' => 'ch-old',
+            'channel_resource_id' => 'res-old',
+        ]);
+        $busy = GoogleBusyBlock::factory()->forConnection($connection)->create();
+        $reservation = $this->reservation($salon, $user, [
+            'start_at' => now()->addDays(3)->setTime(10, 0),
+            'end_at' => now()->addDays(3)->setTime(11, 0),
+        ]);
+
+        $response = $this->putJson("/api/v1/google-calendar/connections/{$connection->id}", [
+            'calendar_id' => 'team@group.calendar.google.com',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('team@group.calendar.google.com', $connection->fresh()->calendar_id);
+        $this->assertDatabaseMissing('google_busy_blocks', ['id' => $busy->id]);
+
+        // watch 失敗でも初回同期（受信＋送信）は投入される
+        Queue::assertPushed(SyncGoogleCalendarJob::class, fn ($job) => $job->connectionId === $connection->id);
+        Queue::assertPushed(SyncReservationToGoogleJob::class, fn ($job) => $job->reservationId === $reservation->id);
+    }
+
+    public function test_update_connection_rejects_read_only_calendar(): void
+    {
+        // 読み取り専用（accessRole=reader）は events.insert が 403 になるため選べない
+        $this->fakeGoogle();
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $connection = GoogleCalendarConnection::factory()->for($salon)->create(['user_id' => $user->id]);
+
+        $this->putJson("/api/v1/google-calendar/connections/{$connection->id}", [
+            'calendar_id' => 'holidays@group.v.calendar.google.com',
+        ])->assertStatus(422)->assertJsonValidationErrors(['calendar_id']);
     }
 
     public function test_update_connection_rejects_unknown_calendar(): void
@@ -531,8 +708,10 @@ class GoogleCalendarApiTest extends TestCase
             'oauth2.googleapis.com/revoke' => Http::response('', 200),
             'www.googleapis.com/calendar/v3/users/me/calendarList*' => Http::response([
                 'items' => [
-                    ['id' => 'owner@example.com', 'primary' => true, 'summary' => 'メインカレンダー'],
-                    ['id' => 'team@group.calendar.google.com', 'primary' => false, 'summary' => 'チーム'],
+                    ['id' => 'owner@example.com', 'primary' => true, 'summary' => 'メインカレンダー', 'accessRole' => 'owner'],
+                    ['id' => 'team@group.calendar.google.com', 'primary' => false, 'summary' => 'チーム', 'accessRole' => 'writer'],
+                    // 読み取り専用（accessRole=reader）は選択肢に出さない・選べない（events.insert が 403 になるため）
+                    ['id' => 'holidays@group.v.calendar.google.com', 'primary' => false, 'summary' => '祝日', 'accessRole' => 'reader'],
                 ],
             ]),
             'www.googleapis.com/calendar/v3/calendars/*/events/watch' => Http::response([

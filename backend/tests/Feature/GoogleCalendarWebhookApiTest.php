@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\SyncGoogleCalendarJob;
 use App\Models\GoogleCalendarConnection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -16,6 +17,13 @@ use Tests\TestCase;
 class GoogleCalendarWebhookApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // webhook 起因の同期ジョブ（sync キュー）が実 API を叩かないことを担保する
+        Http::preventStrayRequests();
+    }
 
     public function test_valid_notification_returns_200_and_dispatches_sync_job(): void
     {

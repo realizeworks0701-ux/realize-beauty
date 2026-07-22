@@ -11,6 +11,7 @@ use App\Models\Salon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\Concerns\CreatesPublicBookingSalon;
@@ -35,6 +36,8 @@ class GoogleCalendarBusyTest extends TestCase
         parent::setUp();
 
         $this->travelTo(Carbon::parse(self::NOW));
+        // Google 連携サロンでの予約作成が実 API を叩かないことを担保する（Queue::fake 忘れの検知）
+        Http::preventStrayRequests();
     }
 
     public function test_per_staff_busy_excludes_slots_for_that_staff_only(): void

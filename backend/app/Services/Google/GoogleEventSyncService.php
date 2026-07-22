@@ -13,7 +13,7 @@ use App\Repositories\ReservationRepository;
 /**
  * 送信同期（RB → Google）のビジネスロジック。
  * 予約1件を実行時点の状態で Google イベントへ反映する（作成・更新・削除）。
- * 担当スタッフ変更・対象カレンダー変更では旧接続・旧カレンダーのイベントを消してから作り直す。
+ * per_staff の担当スタッフ変更・対象カレンダー変更では旧接続・旧カレンダーのイベントを消してから作り直す。
  */
 class GoogleEventSyncService
 {
@@ -83,65 +83,88 @@ class GoogleEventSyncService
             return;
         }
 
-        // per_staff の担当変更: 旧接続（変更前スタッフ）のカレンダーから削除する
-        if ($previousUserId !== null && $previousUserId !== $reservation->user_id) {
+        // per_staff の担当変更のみ旧接続（変更前スタッフ）のカレンダーから作り直す（Business Rules 15）。
+        // shared は共有接続に書き続けるため書き込み先が変わらず、通常の updateEvent で足りる
+        // （題名の担当スタッフ名も payload 再生成で更新される）。
+        if ($reservation->salon->google_calendar_mode === GoogleCalendarMode::PerStaff
+            && $previousUserId !== null
+            && $previousUserId !== $reservation->user_id) {
             $oldConnection = $this->connections->findBySalonAndUser($reservation->salon_id, $previousUserId);
 
-            if ($oldConnection !== null) {
-                $this->deleteEventBestEffort($oldConnection, $oldConnection->calendar_id, $reservation->google_event_id);
+            if ($oldConnection === null) {
+                // 旧スタッフが未接続: best-effort で旧イベントを残し、紐付けを切って新接続で作成する
+                $this->clearEventId($reservation);
+
+                return;
             }
 
-            $this->reservations->updateForSync($reservation, ['google_event_id' => null]);
-            $reservation->google_event_id = null;
+            $this->detachFromPreviousCalendar($reservation, $oldConnection, $oldConnection->calendar_id);
 
             return;
         }
 
-        // 対象カレンダー変更: 同一接続の旧カレンダーから削除する
+        // 対象カレンダー変更: 同一接続の旧カレンダーから作り直す
         if ($previousCalendarId !== null && $connection !== null && $previousCalendarId !== $connection->calendar_id) {
-            $this->deleteEventBestEffort($connection, $previousCalendarId, $reservation->google_event_id);
-
-            $this->reservations->updateForSync($reservation, ['google_event_id' => null]);
-            $reservation->google_event_id = null;
+            $this->detachFromPreviousCalendar($reservation, $connection, $previousCalendarId);
         }
+    }
+
+    /**
+     * 旧カレンダーの RB 由来イベントを削除して紐付けを切り、後段の新規作成に落とす。
+     * - 旧接続が非アクティブ（needs_reconnect）: 削除をスキップしジョブを落とさない。best-effort で
+     *   旧イベントを残し紐付けを切って新規作成へ進む
+     * - 実削除に成功: 紐付けを切って新規作成へ進む
+     * - 404 / 410（旧側に存在しない）: 現カレンダーへ既に移っている可能性があるため紐付けを保持し、
+     *   通常の update 経路（404 なら insert フォールバック）に委ねる。重複孤児を作らない
+     */
+    private function detachFromPreviousCalendar(Reservation $reservation, GoogleCalendarConnection $oldConnection, string $calendarId): void
+    {
+        if ($oldConnection->status === GoogleCalendarConnectionStatus::Active) {
+            $deleted = $this->deleteEventBestEffort($oldConnection, $calendarId, $reservation->google_event_id);
+
+            if (! $deleted) {
+                return;
+            }
+        }
+
+        $this->clearEventId($reservation);
     }
 
     private function deleteFromCurrent(Reservation $reservation, ?GoogleCalendarConnection $connection): void
     {
-        if ($connection !== null
-            && $connection->status === GoogleCalendarConnectionStatus::Active
-            && $reservation->google_event_id !== null) {
-            $this->deleteEventBestEffort($connection, $connection->calendar_id, $reservation->google_event_id);
+        if ($reservation->google_event_id === null) {
+            return;
         }
 
-        // 削除成功・対象接続なしのいずれでも紐付けを切る（受信同期の逆引き照合をヒットさせない）
-        if ($reservation->google_event_id !== null) {
-            $this->reservations->updateForSync($reservation, ['google_event_id' => null]);
-            $reservation->google_event_id = null;
+        // アクティブ接続が無ければ削除できない。紐付けを保持して no-op とする
+        // （削除せず null クリアすると、次の受信同期で当該イベントが突合外れになり phantom busy を生む）
+        if ($connection === null || $connection->status !== GoogleCalendarConnectionStatus::Active) {
+            return;
         }
+
+        // 実削除（成功、または 404 / 410 の冪等成功）した場合にのみ紐付けを切る。
+        // その他の API 失敗・認証失効は deleteEventBestEffort が送出し、null クリアに至らない
+        $this->deleteEventBestEffort($connection, $connection->calendar_id, $reservation->google_event_id);
+
+        $this->clearEventId($reservation);
     }
 
     private function writeEvent(GoogleCalendarConnection $connection, Reservation $reservation): void
     {
-        $accessToken = $this->accessToken($connection);
         $payload = $this->payloadBuilder->build($connection, $reservation);
 
         if ($reservation->google_event_id === null) {
-            $this->insert($connection, $reservation, $accessToken, $payload);
+            $this->insert($connection, $reservation, $payload);
 
             return;
         }
 
         try {
-            $this->client->updateEvent($accessToken, $connection->calendar_id, $reservation->google_event_id, $payload);
-        } catch (GoogleAuthException $e) {
-            $this->connections->markNeedsReconnect($connection);
-
-            throw $e;
+            $this->callWithAuth($connection, fn (string $token) => $this->client->updateEvent($token, $connection->calendar_id, $reservation->google_event_id, $payload));
         } catch (GoogleApiException $e) {
             // 404 / 410 = 対象イベントが存在しない → 作成し直して ID を差し替える
             if (in_array($e->status, [404, 410], true)) {
-                $this->insert($connection, $reservation, $accessToken, $payload);
+                $this->insert($connection, $reservation, $payload);
 
                 return;
             }
@@ -153,50 +176,55 @@ class GoogleEventSyncService
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function insert(GoogleCalendarConnection $connection, Reservation $reservation, string $accessToken, array $payload): void
+    private function insert(GoogleCalendarConnection $connection, Reservation $reservation, array $payload): void
     {
-        try {
-            $event = $this->client->insertEvent($accessToken, $connection->calendar_id, $payload);
-        } catch (GoogleAuthException $e) {
-            $this->connections->markNeedsReconnect($connection);
-
-            throw $e;
-        }
+        $event = $this->callWithAuth($connection, fn (string $token) => $this->client->insertEvent($token, $connection->calendar_id, $payload));
 
         $this->reservations->updateForSync($reservation, ['google_event_id' => $event['id']]);
         $reservation->google_event_id = $event['id'];
     }
 
     /**
-     * 404 / 410（既に存在しない）は冪等成功として無視する。認証失効のみ需再接続として送出する。
+     * 旧カレンダーからの削除を best-effort で実行する。
+     * 実削除に成功したら true、404 / 410（既に存在しない）は冪等成功として false を返す。
+     * 認証失効・その他の API 失敗は送出する（呼び出し側・ジョブが打ち切り／リトライを判断する）。
      */
-    private function deleteEventBestEffort(GoogleCalendarConnection $connection, string $calendarId, string $eventId): void
+    private function deleteEventBestEffort(GoogleCalendarConnection $connection, string $calendarId, string $eventId): bool
     {
         try {
-            $accessToken = $this->accessToken($connection);
-            $this->client->deleteEvent($accessToken, $calendarId, $eventId);
-        } catch (GoogleAuthException $e) {
-            $this->connections->markNeedsReconnect($connection);
-
-            throw $e;
+            $this->callWithAuth($connection, fn (string $token) => $this->client->deleteEvent($token, $calendarId, $eventId));
         } catch (GoogleApiException $e) {
             if (in_array($e->status, [404, 410], true)) {
-                return;
+                return false;
             }
 
             throw $e;
         }
+
+        return true;
     }
 
-    private function accessToken(GoogleCalendarConnection $connection): string
+    /**
+     * Google API 呼び出しを 401 → refresh → 1回再試行で実行する。
+     * 認証失効（GoogleAuthException）は接続を needs_reconnect にして送出する。
+     *
+     * @param  callable(string): mixed  $call
+     */
+    private function callWithAuth(GoogleCalendarConnection $connection, callable $call): mixed
     {
         try {
-            return $this->tokens->accessTokenFor($connection);
+            return $this->tokens->runWithAuthRetry($connection, $call);
         } catch (GoogleAuthException $e) {
             // GoogleTokenService が invalid_grant で既に needs_reconnect にしているが冪等に確実化する
             $this->connections->markNeedsReconnect($connection);
 
             throw $e;
         }
+    }
+
+    private function clearEventId(Reservation $reservation): void
+    {
+        $this->reservations->updateForSync($reservation, ['google_event_id' => null]);
+        $reservation->google_event_id = null;
     }
 }

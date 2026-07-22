@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\GoogleCalendarMode;
 use App\Enums\ReservationStatus;
+use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Customer;
 use App\Models\Menu;
 use App\Models\Reservation;
@@ -10,6 +12,7 @@ use App\Models\Salon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\CreatesSalonUsers;
 use Tests\TestCase;
 
@@ -432,6 +435,91 @@ class ReservationApiTest extends TestCase
         $this->getJson('/api/v1/reservations')->assertUnauthorized();
     }
 
+    public function test_store_dispatches_google_sync_job_when_calendar_mode_configured(): void
+    {
+        [$user, $customer, $menu] = $this->googleSyncContext();
+        Queue::fake();
+
+        $this->postJson('/api/v1/reservations', [
+            'customer_id' => $customer->id,
+            'menu_id' => $menu->id,
+            'user_id' => $user->id,
+            'start_at' => '2026-08-10T10:00:00+09:00',
+        ])->assertCreated();
+
+        $reservationId = Reservation::sole()->id;
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservationId
+                && $job->previousUserId === null,
+        );
+    }
+
+    public function test_update_dispatches_google_sync_job_with_previous_user_id(): void
+    {
+        [$user, $customer, $menu] = $this->googleSyncContext();
+        $reservation = $this->reservationAt($user, $customer, $menu, '2026-08-10T10:00:00+09:00');
+        $newStaff = User::factory()->for($user->salon)->create();
+        Queue::fake();
+
+        $this->patchJson("/api/v1/reservations/{$reservation->id}", [
+            'user_id' => $newStaff->id,
+        ])->assertOk();
+
+        // 担当変更でも旧接続の特定用に変更前の担当ID（旧担当）を渡す
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservation->id
+                && $job->previousUserId === $user->id,
+        );
+    }
+
+    public function test_status_change_dispatches_google_sync_job(): void
+    {
+        [$user, $customer, $menu] = $this->googleSyncContext();
+        $reservation = $this->reservationAt($user, $customer, $menu, '2026-08-10T10:00:00+09:00');
+        Queue::fake();
+
+        $this->patchJson("/api/v1/reservations/{$reservation->id}", [
+            'status' => 'cancelled',
+        ])->assertOk();
+
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservation->id,
+        );
+    }
+
+    public function test_destroy_dispatches_google_sync_job(): void
+    {
+        [$user, $customer, $menu] = $this->googleSyncContext();
+        $reservation = $this->reservationAt($user, $customer, $menu, '2026-08-10T10:00:00+09:00');
+        Queue::fake();
+
+        $this->deleteJson("/api/v1/reservations/{$reservation->id}")->assertNoContent();
+
+        // 論理削除（誤登録の取り消し）でも Google イベント削除を dispatch する
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservation->id,
+        );
+    }
+
+    public function test_store_does_not_dispatch_google_sync_job_when_mode_not_configured(): void
+    {
+        [$user, $customer, $menu] = $this->createSalonContext(); // google_calendar_mode = null
+        Queue::fake();
+
+        $this->postJson('/api/v1/reservations', [
+            'customer_id' => $customer->id,
+            'menu_id' => $menu->id,
+            'user_id' => $user->id,
+            'start_at' => '2026-08-10T10:00:00+09:00',
+        ])->assertCreated();
+
+        Queue::assertNotPushed(SyncReservationToGoogleJob::class);
+    }
+
     public function test_index_includes_reservations_of_soft_deleted_customer(): void
     {
         [$user, $customer, $menu] = $this->createSalonContext();
@@ -489,6 +577,21 @@ class ReservationApiTest extends TestCase
         $user = $this->actingAsSalonUser();
         $customer = Customer::factory()->for($user->salon)->create();
         $menu = Menu::factory()->for($user->salon)->create(['duration_minutes' => 60]);
+
+        return [$user, $customer, $menu];
+    }
+
+    /**
+     * Google カレンダー連携（per_staff）を有効にしたサロンの認証済みコンテキストを作る。
+     *
+     * @return array{0: User, 1: Customer, 2: Menu}
+     */
+    private function googleSyncContext(): array
+    {
+        $salon = Salon::factory()->create(['google_calendar_mode' => GoogleCalendarMode::PerStaff]);
+        $user = $this->actingAsSalonUser($salon);
+        $customer = Customer::factory()->for($salon)->create();
+        $menu = Menu::factory()->for($salon)->create(['duration_minutes' => 60]);
 
         return [$user, $customer, $menu];
     }

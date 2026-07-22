@@ -63,16 +63,38 @@ class GoogleClient
 
     /**
      * 接続アカウントのカレンダー一覧（選択UI用・google_account_email の取得元）。
+     * nextPageToken を辿って全ページを結合する（100件超のアカウントで1ページ目だけ取ると欠落する）。
      *
      * @return array<int, array<string, mixed>>
      */
     public function listCalendars(string $accessToken): array
     {
-        $response = $this->send(fn () => $this->apiRequest($accessToken)->get('/calendar/v3/users/me/calendarList'));
+        $items = [];
+        $pageToken = null;
 
-        $items = $response->json('items');
+        do {
+            $params = ['maxResults' => 250];
 
-        return is_array($items) ? $items : [];
+            if ($pageToken !== null) {
+                $params['pageToken'] = $pageToken;
+            }
+
+            $body = $this->send(
+                fn () => $this->apiRequest($accessToken)->get('/calendar/v3/users/me/calendarList', $params)
+            )->json();
+
+            if (! is_array($body)) {
+                break;
+            }
+
+            foreach ($body['items'] ?? [] as $item) {
+                $items[] = $item;
+            }
+
+            $pageToken = $body['nextPageToken'] ?? null;
+        } while (is_string($pageToken) && $pageToken !== '');
+
+        return $items;
     }
 
     /**
@@ -116,13 +138,18 @@ class GoogleClient
     }
 
     /**
+     * イベントを部分更新する。events.update（PUT・全置換）ではなく PATCH を使う。
+     * PUT は sequence 一致を要求するため、会議室応答や他アプリ編集で sequence が進んだ
+     * イベントへの全置換が 400 で恒久失敗する。PATCH は部分更新で sequence 不要のため回避できる。
+     * 404 / 410（対象イベントが存在しない）は呼び出し側が insert へフォールバックする。
+     *
      * @param  array<string, mixed>  $event
      * @return array<string, mixed>
      */
     public function updateEvent(string $accessToken, string $calendarId, string $eventId, array $event): array
     {
         $response = $this->send(fn () => $this->apiRequest($accessToken)
-            ->put($this->eventsPath($calendarId).'/'.rawurlencode($eventId), $event));
+            ->patch($this->eventsPath($calendarId).'/'.rawurlencode($eventId), $event));
 
         $body = $response->json();
 

@@ -1237,7 +1237,7 @@ Google OAuth（認可コードフロー）を開始し、認可URLを取得す�
 | Item | Value |
 |------|-------|
 | Authentication | Required |
-| Roles | owner, manager, staff |
+| Roles | owner, manager, staff（shared モードは owner, manager のみ） |
 
 ### Response
 

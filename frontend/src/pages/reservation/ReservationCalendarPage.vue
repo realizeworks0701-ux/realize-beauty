@@ -20,10 +20,10 @@ import {
   busyBlocksForStaff,
   computeDisplayRange,
   hhmmToMinutes,
-  layoutBusyBlocks,
-  layoutReservations,
+  layoutStaffColumn,
   minutesToHHMM,
 } from '@/utils/reservationCalendar'
+import type { StaffColumnLayout } from '@/utils/reservationCalendar'
 import type { BusinessHour, BusyBlock, Menu, Reservation, StaffUser } from '@/types'
 
 const SLOT_PX = 44
@@ -186,6 +186,21 @@ const gridStyle = computed(() => ({
   gridTemplateColumns: `72px repeat(${staff.value.length}, minmax(150px, 1fr))`,
 }))
 
+// 同一スタッフ列の予約と外部予定を種別をまたいでレーン割り当てする。
+// 予約と外部予定が重なる場合も列幅を等分して横並びに表示するため、両者を同じクラスタで扱う。
+const columnLayouts = computed<Record<number, StaffColumnLayout>>(() => {
+  const map: Record<number, StaffColumnLayout> = {}
+  const range = displayRange.value
+  for (const user of staff.value) {
+    const ownReservations = reservations.value.filter(
+      (reservation) => reservation.user.id === user.id,
+    )
+    const ownBusy = busyBlocksForStaff(busyBlocks.value, user.id)
+    map[user.id] = layoutStaffColumn(ownReservations, ownBusy, selectedDate.value, range)
+  }
+  return map
+})
+
 interface PositionedBlock {
   reservation: Reservation
   top: number
@@ -199,8 +214,7 @@ const blocksByStaff = computed<Record<number, PositionedBlock[]>>(() => {
   const map: Record<number, PositionedBlock[]> = {}
   const range = displayRange.value
   for (const user of staff.value) {
-    const own = reservations.value.filter((reservation) => reservation.user.id === user.id)
-    map[user.id] = layoutReservations(own, selectedDate.value).map((block) => {
+    map[user.id] = (columnLayouts.value[user.id]?.reservations ?? []).map((block) => {
       const height = Math.max(((block.endMin - block.startMin) / SLOT_MINUTES) * SLOT_PX - 2, 20)
       const width = 100 / block.laneCount
       return {
@@ -223,17 +237,19 @@ interface PositionedBusyBlock {
   leftPct: number
   widthPct: number
   compact: boolean
+  timeLabel: string
 }
 
 // 外部予定ブロック。shared（user_id=null）は全スタッフ列、per_staff は担当列のみに描画する。
+// 時刻はクランプ後の startMin/endMin を表示し、レンジ全体を覆う（終日・複数日）場合は「終日」と表記する。
 const busyBlocksByStaff = computed<Record<number, PositionedBusyBlock[]>>(() => {
   const map: Record<number, PositionedBusyBlock[]> = {}
   const range = displayRange.value
   for (const user of staff.value) {
-    const own = busyBlocksForStaff(busyBlocks.value, user.id)
-    map[user.id] = layoutBusyBlocks(own, selectedDate.value, range).map((block) => {
+    map[user.id] = (columnLayouts.value[user.id]?.busyBlocks ?? []).map((block) => {
       const height = Math.max(((block.endMin - block.startMin) / SLOT_MINUTES) * SLOT_PX - 2, 20)
       const width = 100 / block.laneCount
+      const coversFullRange = block.startMin <= range.startMin && block.endMin >= range.endMin
       return {
         block: block.block,
         top: ((block.startMin - range.startMin) / SLOT_MINUTES) * SLOT_PX + 1,
@@ -241,6 +257,9 @@ const busyBlocksByStaff = computed<Record<number, PositionedBusyBlock[]>>(() => 
         leftPct: block.lane * width,
         widthPct: width,
         compact: height < SLOT_PX,
+        timeLabel: coversFullRange
+          ? '終日'
+          : `${minutesToHHMM(block.startMin)}〜${minutesToHHMM(block.endMin)}`,
       }
     })
   }
@@ -382,9 +401,7 @@ function onDeleted(): void {
               }"
             >
               <span class="external-label">外部予定</span>
-              <span v-if="!block.compact" class="external-time">
-                {{ formatTime(block.block.start_at) }}〜{{ formatTime(block.block.end_at) }}
-              </span>
+              <span v-if="!block.compact" class="external-time">{{ block.timeLabel }}</span>
             </div>
             <button
               v-for="block in blocksByStaff[user.id] ?? []"

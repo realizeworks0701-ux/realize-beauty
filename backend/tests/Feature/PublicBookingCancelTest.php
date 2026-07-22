@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\GoogleCalendarMode;
 use App\Enums\ReservationStatus;
+use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Customer;
 use App\Models\Menu;
 use App\Models\Reservation;
@@ -10,6 +12,7 @@ use App\Models\Salon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -155,9 +158,36 @@ class PublicBookingCancelTest extends TestCase
         $this->assertSame(ReservationStatus::Reserved, $reservation->refresh()->status);
     }
 
-    private function webReservation(ReservationStatus $status = ReservationStatus::Reserved): Reservation
+    public function test_cancel_dispatches_google_sync_job_via_bulk_update_path(): void
     {
-        $salon = Salon::factory()->create();
+        Queue::fake();
+        $reservation = $this->webReservation(googleCalendarMode: GoogleCalendarMode::PerStaff);
+
+        $this->postJson("/api/public/v1/bookings/{$reservation->booking_token}/cancel")->assertOk();
+
+        // cancelByBookingToken は一括 UPDATE でモデルイベントが発火しないが、Service 層から明示 dispatch する
+        Queue::assertPushed(
+            SyncReservationToGoogleJob::class,
+            fn (SyncReservationToGoogleJob $job) => $job->reservationId === $reservation->id,
+        );
+    }
+
+    public function test_cancel_does_not_dispatch_google_sync_job_on_conflict(): void
+    {
+        Queue::fake();
+        // 既にキャンセル済み → 条件付き UPDATE は0件 → 409 でキャンセルは成立しない
+        $reservation = $this->webReservation(ReservationStatus::Cancelled, GoogleCalendarMode::PerStaff);
+
+        $this->postJson("/api/public/v1/bookings/{$reservation->booking_token}/cancel")->assertStatus(409);
+
+        Queue::assertNotPushed(SyncReservationToGoogleJob::class);
+    }
+
+    private function webReservation(
+        ReservationStatus $status = ReservationStatus::Reserved,
+        ?GoogleCalendarMode $googleCalendarMode = null,
+    ): Reservation {
+        $salon = Salon::factory()->create(['google_calendar_mode' => $googleCalendarMode]);
         $start = Carbon::parse(self::START_AT)->utc();
 
         return Reservation::factory()->for($salon)->create([

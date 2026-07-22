@@ -128,6 +128,28 @@ class GoogleCalendarConnectionRepository
         ]);
     }
 
+    /**
+     * sync_token を CAS で保存する（現在値が $expected と一致するときだけ更新）。
+     * 全ページ適用・コミット後にのみ呼ぶこと（先に保存すると取りこぼしが恒久化する）。
+     *
+     * 増分同期の in-flight 中に refresh-sync が窓前進で sync_token を書き換えた場合、
+     * 旧トークン基準の書き戻しで窓前進を潰さないための楽観ロック。null 同士も一致とみなす。
+     * 影響行数を返す（0 = 期待とずれていたため保存せず。呼び出し側は次回に委ねる）。
+     */
+    public function updateSyncTokenIfMatches(int $connectionId, ?string $expected, ?string $new): int
+    {
+        return GoogleCalendarConnection::whereKey($connectionId)
+            ->when(
+                $expected === null,
+                fn ($query) => $query->whereNull('sync_token'),
+                fn ($query) => $query->where('sync_token', $expected),
+            )
+            ->update([
+                'sync_token' => $new,
+                'last_synced_at' => now(),
+            ]);
+    }
+
     public function clearSyncToken(GoogleCalendarConnection $connection): GoogleCalendarConnection
     {
         return $this->update($connection, ['sync_token' => null]);

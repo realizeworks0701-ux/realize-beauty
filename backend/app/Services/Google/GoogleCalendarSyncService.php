@@ -58,10 +58,11 @@ class GoogleCalendarSyncService
      */
     private function incrementalSync(GoogleCalendarConnection $connection): void
     {
-        $accessToken = $this->tokens->accessTokenFor($connection);
         $window = $this->syncWindow();
+        // CAS 用に同期開始時点の sync_token を控える（この増分同期が使ったトークン）
+        $expectedSyncToken = $connection->sync_token;
 
-        [$events, $nextSyncToken] = $this->fetchAllPages($accessToken, $connection, [
+        [$events, $nextSyncToken] = $this->fetchAllPages($connection, [
             'syncToken' => $connection->sync_token,
             'singleEvents' => 'true',
         ]);
@@ -72,7 +73,7 @@ class GoogleCalendarSyncService
             }
         });
 
-        $this->connections->updateSyncToken($connection, $nextSyncToken);
+        $this->connections->updateSyncTokenIfMatches($connection->id, $expectedSyncToken, $nextSyncToken);
     }
 
     /**
@@ -80,10 +81,11 @@ class GoogleCalendarSyncService
      */
     private function fullSync(GoogleCalendarConnection $connection): void
     {
-        $accessToken = $this->tokens->accessTokenFor($connection);
         $window = $this->syncWindow();
+        // 全同期は sync_token = null に対して走る（新規接続 or 410 後のクリア）。それを CAS 期待値にする
+        $expectedSyncToken = $connection->sync_token;
 
-        [$events, $nextSyncToken] = $this->fetchAllPages($accessToken, $connection, [
+        [$events, $nextSyncToken] = $this->fetchAllPages($connection, [
             'timeMin' => $window['from']->toRfc3339String(),
             'timeMax' => $window['to']->toRfc3339String(),
             'singleEvents' => 'true',
@@ -107,17 +109,19 @@ class GoogleCalendarSyncService
             $this->busyBlocks->deleteOutsideWindow($connection->id, $window['from'], $window['to']);
         });
 
-        $this->connections->updateSyncToken($connection, $nextSyncToken);
+        $this->connections->updateSyncTokenIfMatches($connection->id, $expectedSyncToken, $nextSyncToken);
     }
 
     /**
      * 全ページを辿って結合する（nextSyncToken は最終ページにのみ返る）。
      * 同一パラメータ + pageToken で辿り、全ページの結合結果のみを返す。
+     * 各ページ取得は runWithAuthRetry 経由で 401 時に refresh + 1回再試行する
+     * （410〈GoogleSyncTokenExpiredException〉はそのまま伝播し、呼び出し元が全同期へフォールバックする）。
      *
      * @param  array<string, mixed>  $baseParams
      * @return array{0: array<int, array<string, mixed>>, 1: string|null}
      */
-    private function fetchAllPages(string $accessToken, GoogleCalendarConnection $connection, array $baseParams): array
+    private function fetchAllPages(GoogleCalendarConnection $connection, array $baseParams): array
     {
         $events = [];
         $syncToken = null;
@@ -125,7 +129,10 @@ class GoogleCalendarSyncService
 
         do {
             $params = $pageToken === null ? $baseParams : array_merge($baseParams, ['pageToken' => $pageToken]);
-            $body = $this->client->listEvents($accessToken, $connection->calendar_id, $params);
+            $body = $this->tokens->runWithAuthRetry(
+                $connection,
+                fn (string $token) => $this->client->listEvents($token, $connection->calendar_id, $params),
+            );
 
             foreach ($body['items'] ?? [] as $item) {
                 $events[] = $item;
@@ -261,6 +268,12 @@ class GoogleCalendarSyncService
             // 受信起因の予約更新では送信同期を投入しない（無駄な書き戻しの往復を避ける）
             $this->reservations->updateForSync($reservation, ['start_at' => $newStart, 'end_at' => $newEnd]);
 
+            // Google 側の end が導出値と乖離していれば、start が動いていても RB の値で巻き戻す（ADR-025 §6）。
+            // updateForSync でモデルは新 start + 導出 end を保持済みなので、それがそのまま書き戻される。
+            if (! $eventEnd->eq($newEnd)) {
+                $this->rollbackToGoogle($connection, $reservation);
+            }
+
             return;
         }
 
@@ -295,10 +308,12 @@ class GoogleCalendarSyncService
         }
 
         $reservation->loadMissing('user');
-        $accessToken = $this->tokens->accessTokenFor($connection);
         $payload = $this->payloadBuilder->build($connection, $reservation);
 
-        $this->client->updateEvent($accessToken, $connection->calendar_id, $reservation->google_event_id, $payload);
+        $this->tokens->runWithAuthRetry(
+            $connection,
+            fn (string $token) => $this->client->updateEvent($token, $connection->calendar_id, $reservation->google_event_id, $payload),
+        );
     }
 
     private function hasConflict(Reservation $reservation, Carbon $start, Carbon $end): bool

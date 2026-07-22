@@ -154,7 +154,11 @@ class ReservationRepository
 
     public function markReminderSent(Reservation $reservation): void
     {
-        $reservation->update(['reminder_sent_at' => now()]);
+        // reminder_sent_at は Google 受信同期の対象外。updated_at を進めると staleness 基準
+        // （RB の新しさ）を汚し、以後の正当な Google 側移動が恒久的に反映されなくなる（ADR-025 §6）
+        $reservation->reminder_sent_at = now();
+        $reservation->timestamps = false;
+        $reservation->save();
     }
 
     /**

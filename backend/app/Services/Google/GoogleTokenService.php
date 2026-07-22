@@ -35,6 +35,43 @@ class GoogleTokenService
         return $this->refresh($connection);
     }
 
+    /**
+     * 期限に関係なく refresh_token で access_token を強制更新して保存し、新しい値を返す。
+     * API 呼び出しが 401 を返したときの再試行前に使う（要件のエラー表）。
+     * refresh_token が失効していれば接続を needs_reconnect にして GoogleAuthException を投げる。
+     *
+     * @throws GoogleAuthException
+     */
+    public function forceRefresh(GoogleCalendarConnection $connection): string
+    {
+        return $this->refresh($connection);
+    }
+
+    /**
+     * $call を有効な access_token で実行し、401 を受けたら refresh して同一リクエストを1回だけ再試行する。
+     * 再試行でも 401、または refresh 自体が invalid_grant で失敗した場合はそのまま伝播する
+     * （呼び出し側は needs_reconnect 済みとして打ち切る）。それ以外の例外もそのまま伝播する。
+     *
+     * @param  callable(string): mixed  $call
+     *
+     * @throws GoogleAuthException
+     */
+    public function runWithAuthRetry(GoogleCalendarConnection $connection, callable $call): mixed
+    {
+        $token = $this->accessTokenFor($connection);
+
+        try {
+            return $call($token);
+        } catch (GoogleApiException $e) {
+            if ($e->status !== 401) {
+                throw $e;
+            }
+        }
+
+        // 401 → refresh して新トークンで1回だけ再試行する（再試行の 401 はそのまま伝播）
+        return $call($this->forceRefresh($connection));
+    }
+
     private function needsRefresh(GoogleCalendarConnection $connection): bool
     {
         $expiresAt = $connection->token_expires_at;

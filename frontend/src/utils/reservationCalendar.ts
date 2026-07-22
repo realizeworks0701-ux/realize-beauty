@@ -129,19 +129,38 @@ export interface LaidOutBlock {
   laneCount: number
 }
 
+/** 予約ブロックの表示日 00:00 起点の分区間（下限5分で高さを確保） */
+function reservationBounds(
+  reservation: Reservation,
+  day: Date,
+): { startMin: number; endMin: number } {
+  const startMin = minutesIntoDay(reservation.start_at, day)
+  return { startMin, endMin: Math.max(minutesIntoDay(reservation.end_at, day), startMin + 5) }
+}
+
+/** 外部予定を表示レンジ内にクランプした分区間（潰れる予定は呼び出し側で除外する） */
+function busyBounds(
+  block: BusyBlock,
+  day: Date,
+  range: DisplayRange,
+): { startMin: number; endMin: number } {
+  const rawStart = minutesIntoDay(block.start_at, day)
+  const rawEnd = Math.max(minutesIntoDay(block.end_at, day), rawStart + 5)
+  return {
+    startMin: clamp(rawStart, range.startMin, range.endMin),
+    endMin: clamp(rawEnd, range.startMin, range.endMin),
+  }
+}
+
 /**
  * 同一スタッフ列の予約をレーンに割り当てる。
  * 重なり合うブロック群（クラスタ）ごとに列幅を等分して横並びに表示するための情報を返す。
  */
 export function layoutReservations(reservations: Reservation[], day: Date): LaidOutBlock[] {
-  const inputs = reservations.map((reservation) => {
-    const startMin = minutesIntoDay(reservation.start_at, day)
-    return {
-      item: reservation,
-      startMin,
-      endMin: Math.max(minutesIntoDay(reservation.end_at, day), startMin + 5),
-    }
-  })
+  const inputs = reservations.map((reservation) => ({
+    item: reservation,
+    ...reservationBounds(reservation, day),
+  }))
   return assignLanes(inputs).map((laid) => ({
     reservation: laid.item,
     startMin: laid.startMin,
@@ -179,15 +198,7 @@ export function layoutBusyBlocks(
   range: DisplayRange,
 ): LaidOutBusyBlock[] {
   const inputs = blocks
-    .map((block) => {
-      const rawStart = minutesIntoDay(block.start_at, day)
-      const rawEnd = Math.max(minutesIntoDay(block.end_at, day), rawStart + 5)
-      return {
-        item: block,
-        startMin: clamp(rawStart, range.startMin, range.endMin),
-        endMin: clamp(rawEnd, range.startMin, range.endMin),
-      }
-    })
+    .map((block) => ({ item: block, ...busyBounds(block, day, range) }))
     .filter((input) => input.endMin > input.startMin)
   return assignLanes(inputs).map((laid) => ({
     block: laid.item,
@@ -196,4 +207,56 @@ export function layoutBusyBlocks(
     lane: laid.lane,
     laneCount: laid.laneCount,
   }))
+}
+
+/** 同一スタッフ列の予約・外部予定を種別をまたいでレーン割り当てした結果 */
+export interface StaffColumnLayout {
+  reservations: LaidOutBlock[]
+  busyBlocks: LaidOutBusyBlock[]
+}
+
+type ColumnItem =
+  | { kind: 'reservation'; reservation: Reservation }
+  | { kind: 'busy'; block: BusyBlock }
+
+/**
+ * 同一スタッフ列の予約と外部予定を、種別をまたいで1つの重なりクラスタとしてレーン割り当てする
+ * （docs/ui/reservation.md）。予約と外部予定が重なる場合も列幅を等分して横並びに表示するため、
+ * 両者を同じ assignLanes に投入して lane / laneCount を共有する。
+ */
+export function layoutStaffColumn(
+  reservations: Reservation[],
+  busyBlocks: BusyBlock[],
+  day: Date,
+  range: DisplayRange,
+): StaffColumnLayout {
+  const reservationInputs: LaneInput<ColumnItem>[] = reservations.map((reservation) => ({
+    item: { kind: 'reservation' as const, reservation },
+    ...reservationBounds(reservation, day),
+  }))
+  const busyInputs: LaneInput<ColumnItem>[] = busyBlocks
+    .map((block) => ({ item: { kind: 'busy' as const, block }, ...busyBounds(block, day, range) }))
+    .filter((input) => input.endMin > input.startMin)
+
+  const result: StaffColumnLayout = { reservations: [], busyBlocks: [] }
+  for (const laid of assignLanes([...reservationInputs, ...busyInputs])) {
+    if (laid.item.kind === 'reservation') {
+      result.reservations.push({
+        reservation: laid.item.reservation,
+        startMin: laid.startMin,
+        endMin: laid.endMin,
+        lane: laid.lane,
+        laneCount: laid.laneCount,
+      })
+    } else {
+      result.busyBlocks.push({
+        block: laid.item.block,
+        startMin: laid.startMin,
+        endMin: laid.endMin,
+        lane: laid.lane,
+        laneCount: laid.laneCount,
+      })
+    }
+  }
+  return result
 }
