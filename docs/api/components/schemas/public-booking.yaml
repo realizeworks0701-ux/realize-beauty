@@ -131,6 +131,7 @@ PublicReservationRequest:
     - name
     - kana
     - phone
+    - is_first_visit
 
   properties:
 
@@ -174,6 +175,42 @@ PublicReservationRequest:
       maxLength: 20
       description: 電話番号（同一サロン内の既存顧客との照合キー。ハイフン・空白除去、全角→半角の正規化後に完全一致で照合し、複数一致時は id 最小の顧客に紐付ける）
       example: "09012345678"
+
+    is_first_visit:
+      type: boolean
+      description: >
+        「新規ご来店」チェック。true の場合のみ birthday / gender / email を受理する
+        （false のときサーバは検証データから除外する）。値自体は保存しない
+      example: true
+
+    birthday:
+      type: string
+      format: date
+      nullable: true
+      description: 生年月日（サロンTZの本日以前）。新規顧客を作成する場合のみ customers.birthday へ保存する（既存顧客には反映しない）
+      example: "1995-04-01"
+
+    gender:
+      type: integer
+      enum: [0, 1, 2, 9]
+      nullable: true
+      description: 性別（0=未設定 / 1=男性 / 2=女性 / 9=その他）。新規顧客を作成する場合のみ customers.gender へ保存する（既存顧客には反映しない）
+      example: 2
+
+    email:
+      type: string
+      format: email
+      maxLength: 255
+      nullable: true
+      description: メールアドレス。新規顧客を作成する場合のみ customers.email へ保存する（既存顧客には反映しない）
+      example: hanako@example.com
+
+    note:
+      type: string
+      maxLength: 500
+      nullable: true
+      description: ご要望・気になること。is_first_visit と無関係に受理し、reservations.note へ保存する
+      example: 毛先を少し軽くしてほしいです
 
 ########################################################
 

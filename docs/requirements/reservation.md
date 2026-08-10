@@ -161,6 +161,7 @@ Realize Beauty — 予約管理 フェーズ1（ROADMAP v0.3 前倒し）
 4. **過去日時の予約登録を許可する**（事後入力用途）
 5. **日付境界は Asia/Tokyo で解釈する**: 予約一覧の from/to、ダッシュボードの「今日」はJSTの日付境界で判定する。既存ダッシュボード指標（today_customers 等）はアプリTZ（UTC）ベースのままとし、既知の不整合として今回は変更しない（[ADR-023](../decisions/ADR-023-reservation-core.md)）
 6. **無効メニューの扱い**: is_active=false のメニューは新規予約に使用不可。既存予約は保持する
+7. **来店日の自動記録**: `customers.first_visit_at` / `last_visit_at` は、当該顧客の `status=visited` かつ未削除の予約から `MIN(start_at)` / `MAX(start_at)` を salon_timezone の日付に変換して都度引き直す。引き直しの契機は予約の更新（PATCH）と削除（DELETE）の2つで、対象は変更前後の customer_id。visited の予約が1件も無い場合は両方 null に戻す（誤操作の取り消しを自己修復するため）。予約作成時は status が必ず reserved のため引き直さない
 
 ---
 

@@ -1574,6 +1574,11 @@ Web予約を登録する。
 | name | string | ✓ | 予約者名（最大100文字） |
 | kana | string | ✓ | フリガナ（最大100文字） |
 | phone | string | ✓ | 電話番号（最大20文字。正規化〈ハイフン・空白除去、全角→半角〉後に既存顧客と照合） |
+| is_first_visit | boolean | ✓ | 「新規ご来店」チェック。true の場合のみ birthday / gender / email を受理する（保存はしない） |
+| birthday | date | | 生年月日（`YYYY-MM-DD`・サロンTZの本日以前）。新規顧客作成時のみ `customers.birthday` へ保存 |
+| gender | integer | | 性別（0=未設定 / 1=男性 / 2=女性 / 9=その他）。新規顧客作成時のみ `customers.gender` へ保存 |
+| email | string | | メールアドレス（最大255文字）。新規顧客作成時のみ `customers.email` へ保存 |
+| note | string | | ご要望・気になること（最大500文字）。`reservations.note` へ保存 |
 
 ### Response
 
