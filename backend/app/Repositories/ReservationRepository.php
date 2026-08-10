@@ -106,6 +106,26 @@ class ReservationRepository
     }
 
     /**
+     * 顧客の来店日再計算用。status=visited の未削除予約の開始日時の最小・最大を返す。
+     * 該当予約が無い場合は両方 null（＝来店日を null に戻す指示）。
+     *
+     * @return array{first: ?Carbon, last: ?Carbon}
+     */
+    public function visitDateRange(int $salonId, int $customerId): array
+    {
+        $row = Reservation::where('salon_id', $salonId)
+            ->where('customer_id', $customerId)
+            ->where('status', ReservationStatus::Visited->value)
+            ->selectRaw('min(start_at) as first_start_at, max(start_at) as last_start_at')
+            ->first();
+
+        return [
+            'first' => $row?->first_start_at === null ? null : Carbon::parse($row->first_start_at),
+            'last' => $row?->last_start_at === null ? null : Carbon::parse($row->last_start_at),
+        ];
+    }
+
+    /**
      * 公開キャンセルページ用。所属サロンが無効なら 404 とするため is_active を条件に含める。
      */
     public function findByBookingTokenOrFail(string $bookingToken): Reservation

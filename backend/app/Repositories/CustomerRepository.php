@@ -79,6 +79,24 @@ class CustomerRepository
         return $customer->fresh();
     }
 
+    /**
+     * 来店日（visited 予約から再計算した値）だけを更新する。
+     * 論理削除済みの顧客は対象外（復元時に予約更新で引き直される）。
+     */
+    public function updateVisitDates(
+        int $salonId,
+        int $customerId,
+        ?string $firstVisitAt,
+        ?string $lastVisitAt,
+    ): void {
+        Customer::where('salon_id', $salonId)
+            ->whereKey($customerId)
+            ->update([
+                'first_visit_at' => $firstVisitAt,
+                'last_visit_at' => $lastVisitAt,
+            ]);
+    }
+
     public function delete(Customer $customer): void
     {
         $customer->delete();

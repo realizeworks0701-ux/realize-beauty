@@ -99,6 +99,7 @@ class ReservationService
     {
         $reservation = $this->reservationRepository->findOrFail($salonId, $id);
         $previousUserId = $reservation->user_id;
+        $previousCustomerId = $reservation->customer_id;
 
         if (array_key_exists('customer_id', $data)) {
             $this->assertCustomerExists($salonId, (int) $data['customer_id']);
@@ -132,12 +133,18 @@ class ReservationService
             ['start_at' => $startAt, 'end_at' => $endAt],
         );
 
-        $updated = DB::transaction(function () use ($salonId, $reservation, $attributes, $userId, $startAt, $endAt, $status) {
+        $updated = DB::transaction(function () use ($salonId, $reservation, $attributes, $userId, $startAt, $endAt, $status, $previousCustomerId) {
             if (in_array($status, [ReservationStatus::Reserved, ReservationStatus::Visited], true)) {
                 $this->assertNoDoubleBooking($salonId, $userId, $startAt, $endAt, $reservation->id);
             }
 
-            return $this->reservationRepository->update($reservation, $attributes);
+            $updated = $this->reservationRepository->update($reservation, $attributes);
+
+            foreach (array_unique([$previousCustomerId, $updated->customer_id]) as $customerId) {
+                $this->refreshVisitDates($salonId, $customerId);
+            }
+
+            return $updated;
         });
 
         // 担当変更時は変更前スタッフIDを渡し、旧接続のイベント削除→新接続で作成し直させる
@@ -149,10 +156,32 @@ class ReservationService
     public function delete(int $salonId, int $id): void
     {
         $reservation = $this->reservationRepository->findOrFail($salonId, $id);
-        $this->reservationRepository->delete($reservation);
+
+        DB::transaction(function () use ($salonId, $reservation) {
+            $this->reservationRepository->delete($reservation);
+            $this->refreshVisitDates($salonId, $reservation->customer_id);
+        });
 
         // 論理削除（誤登録の取り消し）でも Google イベントを削除する（孤児イベントを残さない）
         $this->dispatchGoogleSync($reservation);
+    }
+
+    /**
+     * 顧客の来店日を status=visited の予約から引き直す。
+     * 条件分岐を持たせず更新・削除で常に引き直すことで、visited の取り消し・
+     * 予約削除・顧客の付け替えのいずれでも値が自己修復する。
+     */
+    private function refreshVisitDates(int $salonId, int $customerId): void
+    {
+        $timezone = config('app.salon_timezone');
+        $range = $this->reservationRepository->visitDateRange($salonId, $customerId);
+
+        $this->customerRepository->updateVisitDates(
+            $salonId,
+            $customerId,
+            $range['first']?->copy()->setTimezone($timezone)->toDateString(),
+            $range['last']?->copy()->setTimezone($timezone)->toDateString(),
+        );
     }
 
     /**
