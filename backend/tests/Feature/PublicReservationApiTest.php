@@ -340,6 +340,146 @@ class PublicReservationApiTest extends TestCase
         $this->assertSame($customer->id, Reservation::sole()->customer_id);
     }
 
+    public function test_saves_additional_fields_to_the_new_customer_when_first_visit_is_checked(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, [
+            'is_first_visit' => true,
+            'birthday' => '1995-04-01',
+            'gender' => 2,
+            'email' => 'hanako@example.com',
+        ]);
+
+        $response->assertCreated();
+        $customer = Customer::where('salon_id', $salon->id)->sole();
+        $this->assertSame('1995-04-01', $customer->birthday?->toDateString());
+        $this->assertSame(2, $customer->gender);
+        $this->assertSame('hanako@example.com', $customer->email);
+    }
+
+    public function test_ignores_additional_fields_when_first_visit_is_not_checked(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, [
+            'is_first_visit' => false,
+            'birthday' => '1995-04-01',
+            'gender' => 2,
+            'email' => 'hanako@example.com',
+        ]);
+
+        $response->assertCreated();
+        $customer = Customer::where('salon_id', $salon->id)->sole();
+        $this->assertNull($customer->birthday);
+        // customers.gender は NOT NULL DEFAULT 0（未回答）のため、未入力時は0のまま
+        $this->assertSame(0, $customer->gender);
+        $this->assertNull($customer->email);
+    }
+
+    public function test_does_not_update_existing_customer_with_additional_fields(): void
+    {
+        [$salon] = $this->createContext();
+        $customer = Customer::factory()->for($salon)->create([
+            'phone' => '090-1234-5678',
+            'birthday' => null,
+            // customers.gender は NOT NULL のため null は指定できない。1 は送信予定の 2 と異なる値にして、
+            // 上書きされていないことを明確に検証する
+            'gender' => 1,
+            'email' => null,
+        ]);
+
+        $response = $this->book($salon, [
+            'phone' => '09012345678',
+            'is_first_visit' => true,
+            'birthday' => '1995-04-01',
+            'gender' => 2,
+            'email' => 'hanako@example.com',
+        ]);
+
+        $response->assertCreated();
+        $customer->refresh();
+        $this->assertNull($customer->birthday);
+        $this->assertSame(1, $customer->gender);
+        $this->assertNull($customer->email);
+    }
+
+    public function test_saves_note_to_the_reservation(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['note' => '毛先を少し軽くしてほしいです']);
+
+        $response->assertCreated();
+        $this->assertSame('毛先を少し軽くしてほしいです', Reservation::sole()->note);
+    }
+
+    public function test_saves_note_even_when_first_visit_is_not_checked(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['is_first_visit' => false, 'note' => 'アレルギーがあります']);
+
+        $response->assertCreated();
+        $this->assertSame('アレルギーがあります', Reservation::sole()->note);
+    }
+
+    public function test_requires_is_first_visit(): void
+    {
+        [$salon, $menu] = $this->createContext();
+
+        $response = $this->postJson("/api/public/v1/salons/{$salon->booking_slug}/reservations", [
+            'menu_id' => $menu->id,
+            'start_at' => self::START_AT,
+            'name' => '山田 花子',
+            'kana' => 'ヤマダ ハナコ',
+            'phone' => '09012345678',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('is_first_visit');
+    }
+
+    public function test_returns_422_for_a_future_birthday(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['is_first_visit' => true, 'birthday' => '2026-12-31']);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('birthday');
+    }
+
+    public function test_returns_422_for_an_out_of_range_gender(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['is_first_visit' => true, 'gender' => 3]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('gender');
+    }
+
+    public function test_returns_422_for_an_invalid_email(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['is_first_visit' => true, 'email' => 'not-an-email']);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('email');
+    }
+
+    public function test_returns_422_for_a_note_longer_than_500_characters(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['note' => str_repeat('あ', 501)]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('note');
+    }
+
     public function test_returns_422_when_phone_already_has_three_future_reservations(): void
     {
         [$salon, $menu, $staff] = $this->createContext();
@@ -574,6 +714,7 @@ class PublicReservationApiTest extends TestCase
             'name' => '山田 花子',
             'kana' => 'ヤマダ ハナコ',
             'phone' => '09012345678',
+            'is_first_visit' => false,
         ], $overrides));
     }
 

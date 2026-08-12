@@ -13,6 +13,9 @@ class CreatePublicReservationRequest extends FormRequest
 
     public function rules(): array
     {
+        // 「今日」はサロンTZ基準で決める（アプリTZ=UTC で判定すると JST 00:00〜09:00 に前日扱いになる）
+        $today = now(config('app.salon_timezone'))->toDateString();
+
         return [
             'menu_id' => ['required', 'integer'],
             'user_id' => ['nullable', 'integer'],
@@ -21,6 +24,12 @@ class CreatePublicReservationRequest extends FormRequest
             'name' => ['required', 'string', 'max:100'],
             'kana' => ['required', 'string', 'max:100'],
             'phone' => ['required', 'string', 'max:20'],
+            // boolean ルールは必須。これが無いと exclude_unless が 'true' を文字列比較して常に除外される
+            'is_first_visit' => ['required', 'boolean'],
+            'birthday' => ['exclude_unless:is_first_visit,true', 'nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today],
+            'gender' => ['exclude_unless:is_first_visit,true', 'nullable', 'integer', 'in:0,1,2,9'],
+            'email' => ['exclude_unless:is_first_visit,true', 'nullable', 'email', 'max:255'],
+            'note' => ['nullable', 'string', 'max:500'],
         ];
     }
 }

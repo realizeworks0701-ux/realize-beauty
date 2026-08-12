@@ -123,6 +123,7 @@ class PublicBookingService
                 'status' => ReservationStatus::Reserved,
                 'source' => ReservationSource::Web,
                 'booking_token' => Str::random(self::BOOKING_TOKEN_LENGTH),
+                'note' => $data['note'] ?? null,
             ]);
 
             if ($customer->line_user_id !== null) {
@@ -215,17 +216,32 @@ class PublicBookingService
     }
 
     /**
-     * 正規化 phone が一致する既存顧客（複数一致は id 最小）に紐付ける。name / kana は上書きしない。
+     * 正規化 phone が一致する既存顧客（複数一致は id 最小）に紐付ける。
+     * 既存顧客には入力値を反映しない（name / kana に加え、新規ご来店の追加項目も上書きしない）。
+     * 他人の電話番号での予約による顧客カルテの改変を防ぐため。
      */
     private function resolveCustomer(int $salonId, string $phone, array $data): Customer
     {
         $customer = $this->customerRepository->findFirstByNormalizedPhone($salonId, $phone);
 
-        return $customer ?? $this->customerRepository->create($salonId, [
+        if ($customer !== null) {
+            return $customer;
+        }
+
+        $attributes = [
             'name' => $data['name'],
             'kana' => $data['kana'],
             'phone' => $phone,
-        ]);
+        ];
+
+        // customers.gender は NOT NULL DEFAULT 0（未回答）のため、未入力時はキー自体を渡さずDBのデフォルトに委ねる
+        foreach (['gender', 'birthday', 'email'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $attributes[$field] = $data[$field];
+            }
+        }
+
+        return $this->customerRepository->create($salonId, $attributes);
     }
 
     /**

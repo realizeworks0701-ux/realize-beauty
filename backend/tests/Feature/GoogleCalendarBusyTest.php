@@ -98,6 +98,7 @@ class GoogleCalendarBusyTest extends TestCase
             'name' => '山田 花子',
             'kana' => 'ヤマダ ハナコ',
             'phone' => '09012345678',
+            'is_first_visit' => false,
         ]);
 
         // 枠埋まりと同じ start_at エラー（外部予定の存在は開示しない）
