@@ -8,7 +8,7 @@
 | 04 | Customer Create         | /customers/create             |
 | 05 | Customer Detail         | /customers/:id                |
 | 06 | Customer Edit           | /customers/:id/edit           |
-| 07 | Record List             | /customers/:id/records        |
+| 07 | Customer Record List    | /customers/:id/records        |
 | 08 | Record Create           | /customers/:id/records/create |
 | 09 | Record Detail           | /records/:id                  |
 | 10 | Record Edit             | /records/:id/edit             |
@@ -20,5 +20,6 @@
 | 16 | Public Booking          | /booking/:slug                |
 | 17 | Public Booking Cancel   | /booking/cancel/:token        |
 | 18 | Google Calendar Settings| /settings/google-calendar     |
+| 19 | Record List (Salon)     | /records                      |
 
 * No 16・17 は**認証なしでアクセスできる公開ページ**（顧客向け）。認証ガード対象外の公開ルートとし、PublicLayout（サイドバーなし・モバイルファースト）を使用する（[public-booking.md](public-booking.md)）

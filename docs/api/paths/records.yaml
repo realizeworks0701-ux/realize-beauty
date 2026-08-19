@@ -1,3 +1,38 @@
+records:
+  get:
+    tags:
+      - Records
+    summary: サロン全体のカルテ一覧取得
+    description: >
+      サロン全体のカルテ一覧。
+      visited_at 降順・ページネーションあり。
+      論理削除済み顧客のカルテは含まない。
+    operationId: listSalonRecords
+    parameters:
+      - $ref: "../components/parameters.yaml#/RecordStatusFilter"
+      - $ref: "../components/parameters.yaml#/Keyword"
+      - $ref: "../components/parameters.yaml#/Page"
+      - $ref: "../components/parameters.yaml#/PerPage"
+    responses:
+      '200':
+        description: "カルテ一覧取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/record.yaml#/RecordCollection"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '422':
+        description: "バリデーションエラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
 customerRecords:
   get:
     tags:

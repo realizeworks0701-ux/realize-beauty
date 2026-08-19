@@ -341,6 +341,7 @@ Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計�
 
 ## records
 
+- (salon_id, visited_at)
 - customer_id
 - user_id
 - visited_at

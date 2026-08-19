@@ -68,6 +68,9 @@ paths:
   /customers/{customerId}:
     $ref: "./paths/customers.yaml#/customer"
 
+  /records:
+    $ref: "./paths/records.yaml#/records"
+
   /customers/{customerId}/records:
     $ref: "./paths/records.yaml#/customerRecords"
 

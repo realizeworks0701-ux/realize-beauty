@@ -28,6 +28,7 @@
 
 * Dashboard
 * Customers
+* Records（カルテ）
 * Reservations（予約）
 * Settings
 

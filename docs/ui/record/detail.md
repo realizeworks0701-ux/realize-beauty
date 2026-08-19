@@ -30,6 +30,8 @@ GET /api/v1/records/{id}
 
 ## Actions
 
+* カルテ一覧へ（その顧客のカルテ一覧 `/customers/{id}/records` へ戻る）
 * 編集
+* 削除
 * AI要約
 * 写真追加

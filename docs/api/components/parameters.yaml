@@ -114,6 +114,13 @@ ReservationUserId:
   schema:
     type: integer
 
+RecordStatusFilter:
+  name: status
+  in: query
+  description: カルテステータスで絞り込み
+  schema:
+    $ref: "./schemas/common.yaml#/RecordStatus"
+
 ReservationStatusFilter:
   name: status
   in: query

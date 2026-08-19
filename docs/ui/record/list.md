@@ -1,4 +1,4 @@
-# Record List
+# Customer Record List
 
 ## 概要
 
@@ -30,3 +30,7 @@ GET /api/v1/customers/{id}/records
 * 詳細
 * 編集
 * 削除
+
+---
+
+サロン全体のカルテ一覧は [list-all.md](list-all.md)。

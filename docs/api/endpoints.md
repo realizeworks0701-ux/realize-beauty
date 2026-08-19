@@ -272,6 +272,49 @@
 
 # Records
 
+## GET /records
+
+### Purpose
+
+サロン全体のカルテ一覧を取得する。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager, staff |
+
+### Query Parameters
+
+| Name | Type | Description |
+|------|------|-------------|
+| status | string | draft / completed |
+| keyword | string | 顧客の氏名・フリガナを横断検索 |
+| page | integer | ページ番号 |
+| per_page | integer | 取得件数（既定20、最大100） |
+
+### Response
+
+200 OK
+
+### Notes
+
+- キーワード検索は部分一致
+- visited_at 降順で返す
+- ページネーション対応
+- 論理削除済み顧客のカルテは含まない
+- 一覧では blocks / photos を含まない
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 401 | 未認証 |
+| 422 | status が enum 外 / per_page が範囲外 |
+
+---
+
 ## GET /customers/{customer}/records
 
 ### Purpose

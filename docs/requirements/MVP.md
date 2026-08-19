@@ -60,6 +60,7 @@ Realize Beauty
 
 ## Medical Record
 
+- カルテ一覧
 - カルテ登録
 - カルテ編集
 - 写真添付
