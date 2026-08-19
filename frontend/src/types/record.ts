@@ -53,3 +53,10 @@ export interface RecordUpdateInput {
   status?: RecordStatus
   blocks?: RecordBlockInput[]
 }
+
+export interface RecordListParams {
+  status?: RecordStatus
+  keyword?: string
+  page?: number
+  per_page?: number
+}

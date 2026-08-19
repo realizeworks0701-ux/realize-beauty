@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Record\CreateRecordRequest;
+use App\Http\Requests\Record\ListRecordsRequest;
 use App\Http\Requests\Record\UpdateRecordRequest;
 use App\Http\Resources\RecordResource;
 use App\Services\RecordService;
@@ -16,6 +17,16 @@ class RecordController extends Controller
     public function __construct(
         private readonly RecordService $recordService,
     ) {}
+
+    public function indexAll(ListRecordsRequest $request): JsonResponse
+    {
+        $records = $this->recordService->listBySalon(
+            $request->user()->salon_id,
+            $request->validated(),
+        );
+
+        return response()->json(RecordResource::collection($records)->response()->getData(true));
+    }
 
     public function index(Request $request, int $customerId): JsonResponse
     {

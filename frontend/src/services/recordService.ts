@@ -3,11 +3,17 @@ import type {
   ApiEnvelope,
   Paginated,
   RecordCreateInput,
+  RecordListParams,
   RecordUpdateInput,
   TreatmentRecord,
 } from '@/types'
 
 export const recordService = {
+  async list(params: RecordListParams = {}): Promise<Paginated<TreatmentRecord>> {
+    const { data } = await apiClient.get<Paginated<TreatmentRecord>>('/records', { params })
+    return data
+  },
+
   async listByCustomer(
     customerId: number,
     params: { page?: number; per_page?: number } = {},

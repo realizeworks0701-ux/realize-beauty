@@ -24,6 +24,11 @@ class RecordService
         return $this->recordRepository->paginate($salonId, $customerId, $filters);
     }
 
+    public function listBySalon(int $salonId, array $filters): LengthAwarePaginator
+    {
+        return $this->recordRepository->paginateBySalon($salonId, $filters);
+    }
+
     public function find(int $salonId, int $id): Record
     {
         return $this->recordRepository->findOrFail($salonId, $id);

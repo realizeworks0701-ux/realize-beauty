@@ -190,10 +190,10 @@ function birthdayText(target: Customer): string {
             <GlassCard title="カルテ" icon="pi pi-file-edit">
               <template #actions>
                 <RouterLink
-                  :to="{ name: 'record-list', params: { id: customerId } }"
+                  :to="{ name: 'customer-record-list', params: { id: customerId } }"
                   class="records-link"
                 >
-                  <i class="pi pi-list" />カルテ一覧へ
+                  <i class="pi pi-list" />カルテ一覧
                 </RouterLink>
                 <Button label="新規カルテ" icon="pi pi-plus" size="small" @click="goRecordCreate" />
               </template>

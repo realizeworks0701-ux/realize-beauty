@@ -41,13 +41,18 @@ const router = createRouter({
     },
     {
       path: '/customers/:id/records',
-      name: 'record-list',
+      name: 'customer-record-list',
       component: () => import('@/pages/record/RecordListPage.vue'),
     },
     {
       path: '/customers/:id/records/create',
       name: 'record-create',
       component: () => import('@/pages/record/RecordFormPage.vue'),
+    },
+    {
+      path: '/records',
+      name: 'record-list',
+      component: () => import('@/pages/record/RecordListAllPage.vue'),
     },
     {
       path: '/records/:id',

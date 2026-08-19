@@ -48,6 +48,9 @@ import {
 
 const DELAY_MS = 250
 
+/** サロン全体のカルテ一覧の既定件数（バックエンドの既定に合わせる） */
+const RECORDS_PER_PAGE = 20
+
 /** LINE連携設定のモック保持値（平文。API 応答時のみマスクする） */
 interface MockLineSetting {
   channel_id: string
@@ -520,6 +523,30 @@ export function installMockAdapter(instance: AxiosInstance): void {
     }
 
     // ---- Records ----
+    if (method === 'get' && url === '/records') {
+      const status: string = config.params?.status ?? ''
+      const keyword: string = config.params?.keyword ?? ''
+      const list = records
+        .filter((r) => (status === '' ? true : r.status === status))
+        .filter((r) =>
+          keyword === ''
+            ? true
+            : [r.customer.name, r.customer.kana].some((v) => v.includes(keyword)),
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.visited_at).getTime() - new Date(a.visited_at).getTime() || b.id - a.id,
+        )
+        .map(recordSummary)
+      return respond(
+        config,
+        paginate(list, {
+          ...config,
+          params: { ...config.params, per_page: config.params?.per_page ?? RECORDS_PER_PAGE },
+        }),
+      )
+    }
+
     const customerRecordsMatch = url.match(/^\/customers\/(\d+)\/records$/)
     if (customerRecordsMatch) {
       const customerId = Number(customerRecordsMatch[1])

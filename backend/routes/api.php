@@ -61,6 +61,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('customers', CustomerController::class);
 
         // Records
+        Route::get('records', [RecordController::class, 'indexAll']);
         Route::get('customers/{customerId}/records', [RecordController::class, 'index']);
         Route::post('customers/{customerId}/records', [RecordController::class, 'store']);
         Route::get('records/{recordId}', [RecordController::class, 'show']);

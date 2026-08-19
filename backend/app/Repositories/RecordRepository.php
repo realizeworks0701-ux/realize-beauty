@@ -8,6 +8,17 @@ use Illuminate\Support\Facades\DB;
 
 class RecordRepository
 {
+    /**
+     * カルテ詳細のリレーション。顧客を論理削除してもカルテ自体は参照できるよう、
+     * customer は withTrashed で引く（RecordResource が customer を必ず参照するため）。
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function detailRelations(): array
+    {
+        return ['customer' => fn ($query) => $query->withTrashed(), 'user', 'blocks', 'photos'];
+    }
+
     public function paginate(int $salonId, int $customerId, array $filters): LengthAwarePaginator
     {
         $perPage = $filters['per_page'] ?? 20;
@@ -19,10 +30,34 @@ class RecordRepository
             ->paginate($perPage);
     }
 
+    /**
+     * サロン全体のカルテを来店日降順で取得する。論理削除済み顧客のカルテは除外する。
+     */
+    public function paginateBySalon(int $salonId, array $filters): LengthAwarePaginator
+    {
+        $perPage = $filters['per_page'] ?? 20;
+        $keyword = isset($filters['keyword']) && $filters['keyword'] !== ''
+            ? '%'.$filters['keyword'].'%'
+            : null;
+
+        return Record::where('salon_id', $salonId)
+            ->whereHas('customer', fn ($query) => $query->when(
+                $keyword !== null,
+                fn ($q) => $q->where(
+                    fn ($q2) => $q2->where('name', 'like', $keyword)->orWhere('kana', 'like', $keyword),
+                ),
+            ))
+            ->when(isset($filters['status']), fn ($query) => $query->where('status', $filters['status']))
+            ->with(['customer', 'user'])
+            ->orderByDesc('visited_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
     public function findOrFail(int $salonId, int $id): Record
     {
         return Record::where('salon_id', $salonId)
-            ->with(['customer', 'user', 'blocks', 'photos'])
+            ->with(self::detailRelations())
             ->findOrFail($id);
     }
 
@@ -45,7 +80,7 @@ class RecordRepository
                 ]);
             }
 
-            return $record->load(['customer', 'user', 'blocks', 'photos']);
+            return $record->load(self::detailRelations());
         });
     }
 
@@ -61,7 +96,7 @@ class RecordRepository
                 $this->syncBlocks($record, $data['blocks']);
             }
 
-            return $record->load(['customer', 'user', 'blocks', 'photos']);
+            return $record->load(self::detailRelations());
         });
     }
 
@@ -106,11 +141,6 @@ class RecordRepository
             'ai_summary' => $summary,
         ]);
 
-        return $record->fresh([
-            'customer',
-            'user',
-            'blocks',
-            'photos',
-        ]);
+        return $record->fresh(self::detailRelations());
     }
 }

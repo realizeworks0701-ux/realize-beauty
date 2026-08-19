@@ -53,6 +53,14 @@ onMounted(async () => {
   }
 })
 
+function goRecordList(): void {
+  if (!record.value) return
+  router.push({
+    name: 'customer-record-list',
+    params: { id: String(record.value.customer.id) },
+  })
+}
+
 function goEdit(): void {
   router.push({ name: 'record-edit', params: { id: String(recordId.value) } })
 }
@@ -73,7 +81,7 @@ function confirmDelete(): void {
       try {
         await recordService.remove(recordId.value)
         toast.add({ severity: 'success', summary: 'カルテを削除しました', life: 3000 })
-        await router.push({ name: 'record-list', params: { id: String(customerId) } })
+        await router.push({ name: 'customer-record-list', params: { id: String(customerId) } })
       } catch (error) {
         toast.add({
           severity: 'error',
@@ -180,6 +188,7 @@ async function handleFileSelected(event: Event): Promise<void> {
         icon="pi pi-file-edit"
       >
         <template #actions>
+          <Button label="カルテ一覧" icon="pi pi-list" outlined @click="goRecordList" />
           <Button label="編集" icon="pi pi-pencil" outlined @click="goEdit" />
           <Button
             label="削除"

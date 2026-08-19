@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ReservationStatus;
 use App\Models\Customer;
 use App\Models\Menu;
+use App\Models\Record;
 use App\Models\Reservation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -57,6 +58,19 @@ class DashboardApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.today_reservations', 2);
+    }
+
+    public function test_index_returns_ok_when_customer_is_soft_deleted(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $customer = Customer::factory()->for($user->salon)->create();
+        Record::factory()->for($user->salon)->for($customer)->for($user)->create(['visited_at' => now()]);
+        $customer->delete();
+
+        $response = $this->getJson('/api/v1/dashboard');
+
+        $response->assertOk();
+        $response->assertJsonCount(0, 'data.recent_records');
     }
 
     public function test_index_requires_authentication(): void

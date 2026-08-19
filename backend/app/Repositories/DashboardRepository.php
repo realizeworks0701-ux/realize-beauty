@@ -45,6 +45,7 @@ class DashboardRepository
                 ->get(),
 
             'recent_records' => Record::where('salon_id', $salonId)
+                ->whereHas('customer')
                 ->with(['customer', 'user'])
                 ->orderBy('visited_at', 'desc')
                 ->limit(5)

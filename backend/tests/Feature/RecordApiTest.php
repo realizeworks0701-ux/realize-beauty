@@ -87,6 +87,31 @@ class RecordApiTest extends TestCase
         $this->assertDatabaseHas('records', ['id' => $record->id, 'status' => 'completed']);
     }
 
+    public function test_show_returns_record_of_soft_deleted_customer(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $customer = Customer::factory()->for($user->salon)->create();
+        $record = Record::factory()->for($user->salon)->for($user)->for($customer)->create();
+        $customer->delete();
+
+        $response = $this->getJson("/api/v1/records/{$record->id}");
+
+        $response->assertOk()->assertJsonPath('data.customer.id', $customer->id);
+    }
+
+    public function test_update_succeeds_for_record_of_soft_deleted_customer(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $customer = Customer::factory()->for($user->salon)->create();
+        $record = Record::factory()->for($user->salon)->for($user)->for($customer)->draft()->create();
+        $customer->delete();
+
+        $response = $this->patchJson("/api/v1/records/{$record->id}", ['status' => 'completed']);
+
+        $response->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertDatabaseHas('records', ['id' => $record->id, 'status' => 'completed']);
+    }
+
     public function test_destroy_soft_deletes_record(): void
     {
         $user = $this->actingAsSalonUser();
