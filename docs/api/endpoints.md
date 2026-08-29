@@ -134,21 +134,33 @@
 ```json
 {
   "data": {
-    "today_customers": 8,
-    "new_customers": 2,
-    "total_customers": 152,
-    "records_this_month": 94,
-    "today_reservations": 5,
-    "recent_customers": [],
-    "recent_records": []
+    "kpis": {
+      "new_customers": { "current": 12, "previous": 10 },
+      "reservations": { "current": 28, "previous": 25 },
+      "sales": { "current": 324000, "previous": 300000 },
+      "repeat_rate": { "current": 78.0, "previous": 74.5 }
+    },
+    "sales_trend": [
+      { "month": "2026-03", "sales": 210000 }
+    ],
+    "today_reservations": [],
+    "popular_menus": [
+      { "menu_id": 1, "name": "プレミアムフェイシャル", "price": 12000, "count": 14 }
+    ],
+    "customer_segments": { "new": 28, "repeat": 42, "dormant": 6, "other": 4 }
   }
 }
 ```
 
 ### Notes
 
-- `today_reservations` は当日（Asia/Tokyo の日付境界）の予約件数。status が `reserved` / `visited` のみ集計する
-- 既存指標（today_customers 等）はアプリTZ（UTC）ベースのままとする（既知の不整合。[ADR-023](../decisions/ADR-023-reservation-core.md) 参照）
+- 集計はすべてサロンTZ（Asia/Tokyo）の日付境界で行う（従来の UTC 境界との混在は解消済み。[ADR-026](../decisions/ADR-026-dashboard-analytics.md) 参照）
+- `kpis` は当月（current）と前月（previous）の値。増減率の計算はフロントエンドで行う
+- `sales` / `sales_trend` は status=visited の予約の `price`（予約時点のメニュー価格スナップショット）合計
+- `repeat_rate` は当月来店顧客のうち当月より前に初来店していた顧客の割合（%、小数1桁）
+- `today_reservations` は当日の予約（status reserved / visited、start_at 昇順）。要素は Reservation と同形
+- `popular_menus` は当月の visited 予約のメニュー別件数上位5件（price は現在のメニュー価格）
+- `customer_segments` は来店歴のある顧客の分類。判定順: dormant（最終来店から90日超）→ new（初来店が当月）→ repeat（来店2回以上）→ other
 
 ---
 

@@ -11,47 +11,119 @@ DashboardResponse:
       type: object
 
       required:
-        - today_customers
-        - records_this_month
-        - new_customers
-        - total_customers
+        - kpis
+        - sales_trend
         - today_reservations
+        - popular_menus
+        - customer_segments
 
       properties:
 
-        today_customers:
-          type: integer
-          description: 本日の来客数
-          example: 8
+        kpis:
+          type: object
+          description: 当月(current)と前月(previous)の比較KPI。集計はサロンTZ（Asia/Tokyo）の日付境界
+          required:
+            - new_customers
+            - reservations
+            - sales
+            - repeat_rate
+          properties:
+            new_customers:
+              $ref: "#/KpiComparison"
+            reservations:
+              $ref: "#/KpiComparison"
+            sales:
+              $ref: "#/KpiComparison"
+            repeat_rate:
+              $ref: "#/KpiComparison"
 
-        new_customers:
-          type: integer
-          description: 新規顧客数（当月）
-          example: 2
-
-        total_customers:
-          type: integer
-          description: 顧客総数
-          example: 152
-
-        records_this_month:
-          type: integer
-          description: 今月のカルテ件数
-          example: 94
+        sales_trend:
+          type: array
+          description: 直近6ヶ月の月次売上（古い順。データのない月は 0）
+          items:
+            type: object
+            required:
+              - month
+              - sales
+            properties:
+              month:
+                type: string
+                description: 対象月（YYYY-MM）
+                example: "2026-08"
+              sales:
+                type: integer
+                description: 月間売上（status=visited の予約の price 合計、円）
+                example: 324000
 
         today_reservations:
-          type: integer
-          description: 今日の予約件数（Asia/Tokyo の当日。status が reserved / visited のみ集計）
-          example: 5
-
-        recent_customers:
           type: array
-          description: 最近の顧客
+          description: 本日（サロンTZ）の予約。status が reserved / visited のみ、start_at 昇順
           items:
-            $ref: "./customer.yaml#/CustomerSummary"
+            $ref: "./reservation.yaml#/Reservation"
 
-        recent_records:
+        popular_menus:
           type: array
-          description: 最近のカルテ
+          description: 当月の visited 予約件数上位5メニュー
           items:
-            $ref: "./record.yaml#/RecordSummary"
+            type: object
+            required:
+              - menu_id
+              - name
+              - price
+              - count
+            properties:
+              menu_id:
+                type: integer
+                example: 1
+              name:
+                type: string
+                example: プレミアムフェイシャル
+              price:
+                type: integer
+                nullable: true
+                description: 現在のメニュー税込価格（円）
+                example: 12000
+              count:
+                type: integer
+                description: 当月の visited 予約件数
+                example: 14
+
+        customer_segments:
+          type: object
+          description: 来店歴のある顧客の分類。判定順は dormant → new → repeat → other
+          required:
+            - new
+            - repeat
+            - dormant
+            - other
+          properties:
+            new:
+              type: integer
+              description: 初来店が当月
+              example: 28
+            repeat:
+              type: integer
+              description: 来店2回以上（休眠を除く）
+              example: 42
+            dormant:
+              type: integer
+              description: 最終来店から90日超
+              example: 6
+            other:
+              type: integer
+              description: 上記いずれにも該当しない来店歴あり顧客
+              example: 4
+
+KpiComparison:
+  type: object
+  description: 当月値と前月値（増減率の計算はフロントエンド）
+  required:
+    - current
+    - previous
+  properties:
+    current:
+      type: number
+      example: 28
+    previous:
+      type: number
+      example: 25

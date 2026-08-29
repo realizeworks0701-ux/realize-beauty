@@ -222,6 +222,7 @@ Salon
 | start_at | timestamptz | 予約開始日時 |
 | end_at | timestamptz | 予約終了日時（サーバ導出。API入力では受け取らない） |
 | status | string | reserved / visited / cancelled / no_show, default 'reserved' |
+| price | integer | nullable。予約時点のメニュー税込価格スナップショット（円）。売上集計に使用（ADR-026）。導入時の既存行は現在のメニュー価格で埋め戻し |
 | source | string | staff / web, default 'staff'（フェーズ2 Web予約で追加） |
 | booking_token | string | nullable, Unique（unique index）。Web予約時のみ生成（キャンセルページURL用）。CSPRNG 由来の `Str::random(32)`（英数大小32文字、128bit 超のエントロピー）で生成する |
 | reminder_sent_at | timestamptz | nullable。前日リマインダー送信日時（フェーズ2 LINE連携で追加） |
@@ -682,10 +683,10 @@ DB制約（EXCLUDE制約等）は採用しない（過剰設計を避ける）�
 
 ## 日付境界（Asia/Tokyo）
 
-予約の from/to、ダッシュボードの「今日の予約」の日付境界は Asia/Tokyo で解釈する。
+予約の from/to、ダッシュボードの日付境界は Asia/Tokyo で解釈する。
 
-既存ダッシュボード指標（today_customers 等）はアプリTZ（UTC）ベースのままであり、
-既知の不整合として [ADR-023](../decisions/ADR-023-reservation-core.md) に注記する（今回は変更しない）。
+ダッシュボード指標がアプリTZ（UTC）ベースのまま残っていた既知の不整合（[ADR-023](../decisions/ADR-023-reservation-core.md)）は、
+ダッシュボード刷新に伴い [ADR-026](../decisions/ADR-026-dashboard-analytics.md) で解消し、集計をすべて Asia/Tokyo 基準に統一した。
 
 ---
 
