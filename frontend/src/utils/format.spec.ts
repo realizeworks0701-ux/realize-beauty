@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   calcAge,
+  calcDeltaPercent,
   formatDate,
   formatNumber,
   genderLabel,
@@ -74,5 +75,16 @@ describe('calcAge', () => {
   it('null は null を返す', () => {
     expect(calcAge(null)).toBeNull()
     expect(calcAge(undefined)).toBeNull()
+  })
+})
+
+describe('calcDeltaPercent', () => {
+  it('前月比の増減率を小数1桁で返す', () => {
+    expect(calcDeltaPercent(12, 10)).toBe(20)
+    expect(calcDeltaPercent(11, 12)).toBe(-8.3)
+  })
+
+  it('前月が0のときはnull（表示しない）', () => {
+    expect(calcDeltaPercent(5, 0)).toBeNull()
   })
 })

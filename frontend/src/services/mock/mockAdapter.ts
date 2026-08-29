@@ -453,21 +453,49 @@ export function installMockAdapter(instance: AxiosInstance): void {
 
     // ---- Dashboard ----
     if (method === 'get' && url === '/dashboard') {
-      const today = toLocalDateString(new Date())
-      const todayReservations = reservations.filter(
-        (reservation) =>
-          toLocalDateString(reservation.start_at) === today &&
-          (reservation.status === 'reserved' || reservation.status === 'visited'),
-      ).length
+      const now = new Date()
+      const today = toLocalDateString(now)
+      const todayReservations = reservations
+        .filter(
+          (reservation) =>
+            toLocalDateString(reservation.start_at) === today &&
+            (reservation.status === 'reserved' || reservation.status === 'visited'),
+        )
+        .sort((a, b) => a.start_at.localeCompare(b.start_at))
+
+      const trendSales = [182000, 210000, 198000, 246000, 289000, 324000]
+      const salesTrend = trendSales.map((sales, index) => {
+        const date = new Date(
+          now.getFullYear(),
+          now.getMonth() - (trendSales.length - 1 - index),
+          1,
+        )
+        return {
+          month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+          sales,
+        }
+      })
+
+      const popularCounts = [14, 11, 8, 6, 3]
+      const popularMenus = menus.slice(0, 5).map((menu, index) => ({
+        menu_id: menu.id,
+        name: menu.name,
+        price: menu.price,
+        count: popularCounts[index] ?? 1,
+      }))
+
       return respond(config, {
         data: {
-          today_customers: 8,
-          new_customers: 2,
-          total_customers: customers.length + 144,
-          records_this_month: 94,
+          kpis: {
+            new_customers: { current: 12, previous: 10 },
+            reservations: { current: 28, previous: 25 },
+            sales: { current: 324000, previous: 300000 },
+            repeat_rate: { current: 78, previous: 73 },
+          },
+          sales_trend: salesTrend,
           today_reservations: todayReservations,
-          recent_customers: customers.slice(0, 5),
-          recent_records: records.slice(0, 5).map(recordSummary),
+          popular_menus: popularMenus,
+          customer_segments: { new: 28, repeat: 42, dormant: 6, other: 4 },
         },
       })
     }

@@ -18,6 +18,12 @@ export function formatNumber(value: number): string {
   return value.toLocaleString('ja-JP')
 }
 
+/** 前期比の増減率（%・小数1桁）。previous が 0 のときは null を返し表示しない */
+export function calcDeltaPercent(current: number, previous: number): number | null {
+  if (previous === 0) return null
+  return Math.round(((current - previous) / previous) * 1000) / 10
+}
+
 const GENDER_LABELS: Record<Gender, string> = {
   0: '未設定',
   1: '男性',
