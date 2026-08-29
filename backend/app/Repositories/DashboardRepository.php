@@ -96,7 +96,11 @@ class DashboardRepository
             return 0.0;
         }
 
-        $repeaters = Customer::where('salon_id', $salonId)
+        // 分母（$visitorIds）は reservations.customer_id を直接見るため論理削除済み顧客も含む。
+        // 分子も withTrashed() で揃えないと、当月来店後に論理削除された顧客が
+        // 「分母には入るが分子には決して入れない」状態になり repeat_rate が過小になる。
+        $repeaters = Customer::withTrashed()
+            ->where('salon_id', $salonId)
             ->whereIn('id', $visitorIds)
             ->where('first_visit_at', '<', $from->toDateString())
             ->count();

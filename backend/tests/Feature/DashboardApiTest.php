@@ -79,6 +79,7 @@ class DashboardApiTest extends TestCase
 
         $response->assertJsonPath('data.kpis.sales.current', 5000);
         $response->assertJsonPath('data.kpis.sales.previous', 0);
+        $response->assertJsonPath('data.sales_trend.5.sales', 5000);
     }
 
     public function test_new_customers_and_reservations_kpis_compare_with_previous_month(): void
@@ -115,6 +116,24 @@ class DashboardApiTest extends TestCase
         $newcomer = Customer::factory()->for($user->salon)->create(['first_visit_at' => '2026-08-05']);
         $this->reservationAt($user, $menu, '2026-08-10T10:00:00+09:00', ReservationStatus::Visited, 1000, $repeater);
         $this->reservationAt($user, $menu, '2026-08-05T10:00:00+09:00', ReservationStatus::Visited, 1000, $newcomer);
+
+        $response = $this->getJson('/api/v1/dashboard');
+
+        $response->assertJsonPath('data.kpis.repeat_rate.current', 50.0);
+    }
+
+    public function test_repeat_rate_counts_soft_deleted_customers_as_repeaters(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $menu = $this->menuFor($user);
+
+        $repeater = Customer::factory()->for($user->salon)->create(['first_visit_at' => '2026-07-10']);
+        $newcomer = Customer::factory()->for($user->salon)->create(['first_visit_at' => '2026-08-05']);
+        $this->reservationAt($user, $menu, '2026-08-10T10:00:00+09:00', ReservationStatus::Visited, 1000, $repeater);
+        $this->reservationAt($user, $menu, '2026-08-05T10:00:00+09:00', ReservationStatus::Visited, 1000, $newcomer);
+
+        // リピーターが当月来店後に論理削除されても、母集団の分子から漏れて repeat_rate が歪んではならない
+        $repeater->delete();
 
         $response = $this->getJson('/api/v1/dashboard');
 
