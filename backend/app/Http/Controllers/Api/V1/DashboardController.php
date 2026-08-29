@@ -3,8 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\CustomerResource;
-use App\Http\Resources\RecordResource;
+use App\Http\Resources\ReservationResource;
 use App\Services\DashboardService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,14 +20,12 @@ class DashboardController extends Controller
 
         return response()->json([
             'data' => [
-                'today_customers' => $summary['today_customers'],
-                'new_customers' => $summary['new_customers'],
-                'total_customers' => $summary['total_customers'],
-                'records_this_month' => $summary['records_this_month'],
-                'today_reservations' => $summary['today_reservations'],
-                'recent_customers' => CustomerResource::collection($summary['recent_customers']),
-                'recent_records' => RecordResource::collection($summary['recent_records']),
+                'kpis' => $summary['kpis'],
+                'sales_trend' => $summary['sales_trend'],
+                'today_reservations' => ReservationResource::collection($summary['today_reservations']),
+                'popular_menus' => $summary['popular_menus'],
+                'customer_segments' => $summary['customer_segments'],
             ],
-        ]);
+        ], options: JSON_PRESERVE_ZERO_FRACTION);
     }
 }
