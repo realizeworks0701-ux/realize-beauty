@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
+import Drawer from 'primevue/drawer'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const confirm = useConfirm()
 const auth = useAuthStore()
+
+const route = useRoute()
+const menuOpen = ref(false)
+
+watch(
+  () => route.path,
+  () => {
+    menuOpen.value = false
+  },
+)
 
 const navItems = [
   { label: 'ダッシュボード', icon: 'pi pi-home', to: '/dashboard' },
@@ -36,10 +48,21 @@ function confirmLogout(): void {
 <template>
   <div class="app-shell">
     <header class="app-header glass-card">
-      <RouterLink to="/dashboard" class="brand">
-        <span class="brand-icon"><i class="pi pi-sparkles" /></span>
-        <span class="brand-name">Realize Beauty</span>
-      </RouterLink>
+      <div class="header-left">
+        <Button
+          icon="pi pi-bars"
+          severity="secondary"
+          text
+          rounded
+          class="menu-button"
+          aria-label="メニューを開く"
+          @click="menuOpen = true"
+        />
+        <RouterLink to="/dashboard" class="brand">
+          <span class="brand-icon"><i class="pi pi-sparkles" /></span>
+          <span class="brand-name">Realize Beauty</span>
+        </RouterLink>
+      </div>
       <div class="header-right">
         <div class="user-chip">
           <Avatar :label="auth.user?.name?.charAt(0) ?? '?'" shape="circle" class="user-avatar" />
@@ -55,6 +78,21 @@ function confirmLogout(): void {
         />
       </div>
     </header>
+
+    <Drawer v-model:visible="menuOpen" header="メニュー" class="mobile-drawer">
+      <nav class="nav-list">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="nav-item"
+          :class="{ active: $route.path.startsWith(item.to) }"
+        >
+          <i :class="item.icon" />
+          <span>{{ item.label }}</span>
+        </RouterLink>
+      </nav>
+    </Drawer>
 
     <div class="app-body">
       <aside class="app-sidebar glass-card">
@@ -214,5 +252,45 @@ function confirmLogout(): void {
   flex: 1;
   min-width: 0;
   max-width: 1160px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.menu-button {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .menu-button {
+    display: inline-flex;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .app-shell {
+    padding: 0.75rem 0.75rem 1.25rem;
+  }
+
+  .app-header {
+    top: 0.75rem;
+  }
+}
+
+@media (max-width: 599px) {
+  .user-name {
+    display: none;
+  }
+
+  .user-chip {
+    padding: 0.15rem;
+    background: transparent;
+    border: none;
+  }
 }
 </style>
