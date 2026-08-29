@@ -26,6 +26,7 @@ class DashboardController extends Controller
                 'popular_menus' => $summary['popular_menus'],
                 'customer_segments' => $summary['customer_segments'],
             ],
+            // repeat_rate を OpenAPI の number どおり 78.0 形式で返すため(PHP の json_encode は既定で 78 に丸める)
         ], options: JSON_PRESERVE_ZERO_FRACTION);
     }
 }

@@ -183,6 +183,7 @@ class DatabaseSeeder extends Seeder
                     'menu_id' => $definition['menu']->id,
                     'end_at' => $startAt->copy()->addMinutes($definition['menu']->duration_minutes),
                     'status' => $definition['status'],
+                    'price' => $definition['menu']->price,
                     'note' => $definition['note'],
                 ],
             );

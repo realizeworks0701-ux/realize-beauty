@@ -6,6 +6,7 @@ use App\Enums\ReservationStatus;
 use App\Models\Customer;
 use App\Models\Menu;
 use App\Models\Reservation;
+use App\Models\Salon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -234,6 +235,87 @@ class DashboardApiTest extends TestCase
     public function test_index_requires_authentication(): void
     {
         $this->getJson('/api/v1/dashboard')->assertUnauthorized();
+    }
+
+    public function test_dashboard_aggregates_are_isolated_by_salon(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $menu = $this->menuFor($user);
+
+        // 自サロン: 当月に新規顧客1件・来店1件のみの既知データ
+        $this->reservationAt($user, $menu, '2026-08-10T10:00:00+09:00', ReservationStatus::Visited, 5000);
+        Customer::factory()->for($user->salon)->create(['first_visit_at' => '2026-08-10', 'last_visit_at' => '2026-08-10']);
+
+        // 別サロン: 混入すると集計値がずれる規模のデータを直接作成する
+        $otherSalon = Salon::factory()->create();
+        $otherUser = User::factory()->for($otherSalon)->create();
+        $otherMenu = Menu::factory()->for($otherSalon)->create(['duration_minutes' => 60]);
+        $otherCustomer = Customer::factory()->for($otherSalon)->create(['first_visit_at' => '2026-08-15', 'last_visit_at' => '2026-08-15']);
+
+        $otherVisitStart = Carbon::parse('2026-08-15T11:00:00+09:00')->utc();
+        Reservation::factory()->for($otherSalon)->create([
+            'customer_id' => $otherCustomer->id,
+            'menu_id' => $otherMenu->id,
+            'user_id' => $otherUser->id,
+            'start_at' => $otherVisitStart,
+            'end_at' => $otherVisitStart->copy()->addMinutes(60),
+            'status' => ReservationStatus::Visited,
+            'price' => 99999,
+        ]);
+
+        $todayJst = Carbon::today(config('app.salon_timezone'));
+        $otherTodayStart = $todayJst->copy()->setTime(9, 0)->utc();
+        Reservation::factory()->for($otherSalon)->create([
+            'customer_id' => $otherCustomer->id,
+            'menu_id' => $otherMenu->id,
+            'user_id' => $otherUser->id,
+            'start_at' => $otherTodayStart,
+            'end_at' => $otherTodayStart->copy()->addMinutes(60),
+            'status' => ReservationStatus::Reserved,
+            'price' => 1234,
+        ]);
+
+        $response = $this->getJson('/api/v1/dashboard');
+
+        $response->assertOk();
+        $response->assertJsonPath('data.kpis.new_customers.current', 1);
+        $response->assertJsonPath('data.kpis.reservations.current', 1);
+        $response->assertJsonPath('data.kpis.sales.current', 5000);
+        $response->assertJsonPath('data.sales_trend.5.month', '2026-08');
+        $response->assertJsonPath('data.sales_trend.5.sales', 5000);
+        $response->assertJsonCount(0, 'data.today_reservations');
+        $response->assertJsonCount(1, 'data.popular_menus');
+        $response->assertJsonPath('data.popular_menus.0.menu_id', $menu->id);
+        $response->assertJsonPath('data.popular_menus.0.count', 1);
+        $response->assertJsonPath('data.customer_segments.new', 1);
+    }
+
+    public function test_index_returns_ok_when_todays_reservation_customer_is_soft_deleted(): void
+    {
+        $user = $this->actingAsSalonUser();
+        $menu = $this->menuFor($user);
+        $todayJst = Carbon::today(config('app.salon_timezone'));
+
+        $customer = Customer::factory()->for($user->salon)->create();
+        $reservation = $this->reservationAt(
+            $user,
+            $menu,
+            $todayJst->copy()->setTime(10, 0)->toIso8601String(),
+            ReservationStatus::Reserved,
+            1000,
+            $customer,
+        );
+
+        // Reservation::customer() は withTrashed のため、論理削除後も today_reservations に正しく含める
+        $customer->delete();
+
+        $response = $this->getJson('/api/v1/dashboard');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data.today_reservations');
+        $response->assertJsonPath('data.today_reservations.0.id', $reservation->id);
+        $response->assertJsonPath('data.today_reservations.0.customer.id', $customer->id);
+        $response->assertJsonPath('data.today_reservations.0.customer.name', $customer->name);
     }
 
     private function menuFor(User $user): Menu
