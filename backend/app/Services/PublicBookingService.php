@@ -121,6 +121,7 @@ class PublicBookingService
                 'start_at' => $startAt,
                 'end_at' => $endAt,
                 'status' => ReservationStatus::Reserved,
+                'price' => $menu->price,
                 'source' => ReservationSource::Web,
                 'booking_token' => Str::random(self::BOOKING_TOKEN_LENGTH),
                 'note' => $data['note'] ?? null,

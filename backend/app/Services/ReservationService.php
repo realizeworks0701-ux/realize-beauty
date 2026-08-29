@@ -76,7 +76,7 @@ class ReservationService
         $startAt = Carbon::parse($data['start_at'])->utc();
         $endAt = $startAt->copy()->addMinutes($menu->duration_minutes);
 
-        $reservation = DB::transaction(function () use ($salonId, $data, $startAt, $endAt) {
+        $reservation = DB::transaction(function () use ($salonId, $data, $menu, $startAt, $endAt) {
             $this->assertNoDoubleBooking($salonId, (int) $data['user_id'], $startAt, $endAt);
 
             return $this->reservationRepository->create($salonId, [
@@ -86,6 +86,7 @@ class ReservationService
                 'start_at' => $startAt,
                 'end_at' => $endAt,
                 'status' => ReservationStatus::Reserved,
+                'price' => $menu->price,
                 'note' => $data['note'] ?? null,
             ]);
         });
@@ -131,6 +132,7 @@ class ReservationService
         $attributes = array_merge(
             Arr::only($data, ['customer_id', 'menu_id', 'user_id', 'status', 'note']),
             ['start_at' => $startAt, 'end_at' => $endAt],
+            $menuChanged ? ['price' => $menu->price] : [],
         );
 
         $updated = DB::transaction(function () use ($salonId, $reservation, $attributes, $userId, $startAt, $endAt, $status, $previousCustomerId) {

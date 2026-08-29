@@ -58,6 +58,7 @@ class PublicReservationApiTest extends TestCase
         $this->assertSame(ReservationSource::Web, $reservation->source);
         $this->assertTrue(Carbon::parse(self::START_AT)->eq($reservation->start_at));
         $this->assertTrue(Carbon::parse(self::START_AT)->addMinutes(60)->eq($reservation->end_at));
+        $this->assertSame($menu->price, $reservation->price);
     }
 
     public function test_issues_booking_token_of_32_characters(): void

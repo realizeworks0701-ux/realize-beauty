@@ -21,6 +21,7 @@ class Reservation extends Model
         'start_at',
         'end_at',
         'status',
+        'price',
         'source',
         'booking_token',
         'reminder_sent_at',
@@ -32,6 +33,7 @@ class Reservation extends Model
         'start_at' => 'datetime',
         'end_at' => 'datetime',
         'status' => ReservationStatus::class,
+        'price' => 'integer',
         'source' => ReservationSource::class,
         'reminder_sent_at' => 'datetime',
     ];
