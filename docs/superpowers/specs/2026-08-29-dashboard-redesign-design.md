@@ -1,7 +1,7 @@
 # ダッシュボード刷新 + レスポンシブ化 設計書
 
 - 日付: 2026-08-29
-- ステータス: 承認済み
+- ステータス: 実装済み (2026-08-29)
 - 関連: ADR-026(新規作成予定) / docs/ui/dashboard.md / docs/api/components/schemas/dashboard.yaml / docs/db/ERD.md
 
 ## 背景と目的
