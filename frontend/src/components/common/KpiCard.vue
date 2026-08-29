@@ -8,11 +8,17 @@ const props = withDefaults(
     value: number
     icon: string
     variant?: 'rose' | 'peach' | 'mauve' | 'cream'
+    prefix?: string
     suffix?: string
+    delta?: number | null
+    deltaSuffix?: string
   }>(),
   {
     variant: 'rose',
+    prefix: '',
     suffix: '',
+    delta: null,
+    deltaSuffix: '%',
   },
 )
 
@@ -26,7 +32,12 @@ const displayValue = computed(() => formatNumber(props.value))
     <div class="kpi-body">
       <span class="kpi-label">{{ label }}</span>
       <span class="kpi-value">
-        {{ displayValue }}<span v-if="suffix" class="kpi-suffix">{{ suffix }}</span>
+        <span v-if="prefix" class="kpi-prefix">{{ prefix }}</span
+        >{{ displayValue }}<span v-if="suffix" class="kpi-suffix">{{ suffix }}</span>
+      </span>
+      <span v-if="delta !== null" class="kpi-delta" :class="delta >= 0 ? 'is-up' : 'is-down'">
+        <i :class="delta >= 0 ? 'pi pi-arrow-up-right' : 'pi pi-arrow-down-right'" />
+        {{ delta >= 0 ? '+' : '' }}{{ delta }}{{ deltaSuffix }}
       </span>
     </div>
   </div>
@@ -102,5 +113,36 @@ const displayValue = computed(() => formatNumber(props.value))
   font-size: 0.95rem;
   margin-left: 0.15rem;
   font-weight: 500;
+}
+
+.kpi-prefix {
+  font-size: 0.95rem;
+  margin-right: 0.1rem;
+  font-weight: 500;
+}
+
+.kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  align-self: flex-start;
+  margin-top: 0.2rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.kpi-delta i {
+  font-size: 0.62rem;
+}
+
+.kpi-delta.is-up {
+  color: #eafff2;
+}
+
+.kpi-delta.is-down {
+  color: #ffe3e3;
 }
 </style>
