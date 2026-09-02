@@ -29,7 +29,7 @@
 | 019 | Customer・Record・Photo API 実装 | 顧客/カルテ/写真 API を Controller→Service→Repository の3層で実装。Resource でレスポンス、FormRequest で検証、カルテブロックは Repository 内で同期、Photo は SoftDelete、認証は Sanctum。 |
 | 020 | Frontend Theme | 白×くすみピンク×ベージュ + Glassmorphism。PrimeVue v4 definePreset + CSS変数 `--rb-*`（main.css）に集約。共通コンポーネント（GlassCard/KpiCard等）で構成。写真はInstagram風グリッド。開発用モックは `npm run dev:mock`。 |
 | 021 | OpenAI 連携（AI要約） | AI責務を `OpenAIService` に集約（Controller→RecordService→OpenAIService）。Http クライアント使用で追加パッケージなし、`Http::fake()` でテスト。要約対象は内容のあるテキストブロックのみ、ボタン押下時のみ生成し `records.ai_summary` に保存。APIレスポンスキーは `summary`（OpenAPI準拠）、DBカラムは `ai_summary`（ERD準拠）で併存。 |
-| 022 | デプロイ構成 | フロント=Cloudflare Pages / API=Render(Docker)+Managed PostgreSQL / 写真=R2。フロントは `VITE_API_BASE_URL` でAPI接続先を注入、CORSは `CORS_ALLOWED_ORIGINS`。`render.yaml`・`backend/Dockerfile` 一式。手順は docs/deployment.md。API は MVP 構成（artisan serve）。 |
+| 022 | デプロイ構成 | フロント=Cloudflare Pages / API=Render(Docker)+Managed PostgreSQL / 写真=R2。フロントは `VITE_API_BASE_URL` でAPI接続先を注入、CORSは `CORS_ALLOWED_ORIGINS`（未設定なら全拒否のフェイルクローズ）。`render.yaml`・`backend/Dockerfile` 一式。手順は docs/deployment.md。API は MVP 構成（artisan serve）。 |
 
 ## 横断テーマ
 
@@ -37,6 +37,7 @@
 - **レイヤードアーキテクチャ**（008, 009, 019）: Controller（Request/Validation/Response）→ Service（ロジック/トランザクション/AI）→ Repository（DB アクセス）→ Model。
 - **SaaS 前提の設計**（002, 003）: `salon_id` マルチテナント、`role` 予約、SoftDelete。MVP でも将来拡張を織り込む。
 - **Documentation Driven + AI**（007, 014）: 設計書を資産とし、変更はドキュメント先行。AI は AGENTS.md・ADR を参照。
+| 028 | 本番ハードニング | ログインthrottle（IP+メール）、`trustProxies`、Sanctumトークン期限、R2をprivate化し写真は署名付きURL、`.dockerignore`＋`php.ini-production`＋非root＋digest固定、`LOG_CHANNEL=stderr`とQueryExceptionのバインド値除去、`db:seed`の本番ガードと`salon:create-owner`。手動手順は docs/runbook-hardening.md。 |
 
 ## 補足（決定履歴）
 

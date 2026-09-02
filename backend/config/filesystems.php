@@ -68,10 +68,11 @@ return [
             'region' => 'auto',
             'bucket' => env('R2_BUCKET'),
             'endpoint' => env('R2_ENDPOINT'),
-            // 公開URLの生成に使う（R2 の公開バケットURL または独自ドメイン）
+            // バケットの公開アクセスは無効化し、写真は署名付きURL（temporaryUrl）で配る。
+            // R2_PUBLIC_URL は公開アクセスを再度有効にした場合のみ使う。
             'url' => env('R2_PUBLIC_URL'),
             'use_path_style_endpoint' => true,
-            'visibility' => 'public',
+            'visibility' => 'private',
             'throw' => false,
             'report' => false,
         ],
@@ -88,6 +89,18 @@ return [
     | the locations of the links and the values should be their targets.
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | 写真の署名付きURLの有効期間（分）
+    |--------------------------------------------------------------------------
+    |
+    | private バケット（r2）で Photo の url を生成するときの期限。短いほど安全だが、
+    | 画面を開いたまま放置したときに画像が切れるため運用で調整する。
+    |
+    */
+
+    'photo_url_ttl_minutes' => (int) env('PHOTO_URL_TTL_MINUTES', 60),
 
     'links' => [
         public_path('storage') => storage_path('app/public'),

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { resolvePublicApiBaseURL } from '@/utils/apiBaseUrl'
 import type {
   ApiEnvelope,
   AvailabilitySlot,
@@ -10,7 +11,10 @@ import type {
 } from '@/types'
 
 // 公開APIは認証不要のため、Authorization ヘッダを付与する管理用 apiClient とは分離する。
-const baseURL = import.meta.env.VITE_PUBLIC_API_BASE_URL ?? '/api/public/v1'
+const baseURL = resolvePublicApiBaseURL(
+  import.meta.env.VITE_PUBLIC_API_BASE_URL,
+  import.meta.env.VITE_API_BASE_URL,
+)
 
 export const publicApiClient = axios.create({
   baseURL,

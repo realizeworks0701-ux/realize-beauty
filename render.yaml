@@ -30,6 +30,39 @@ services:
       - key: APP_URL
         sync: false
 
+      # ログは Render のログストリーム（stderr）へ。既定の stack→single は
+      # コンテナの一時ディスクに書くため再デプロイで消え、参照もできない。
+      - key: LOG_CHANNEL
+        value: stderr
+      # 既定の debug は SQL バインド値などを含む詳細ログが出るため info に絞る
+      - key: LOG_LEVEL
+        value: info
+
+      # 営業日の境界計算に使う（config/app.php salon_timezone）。既定値と同じだが本番では明示する
+      - key: SALON_TIMEZONE
+        value: Asia/Tokyo
+
+      # artisan serve は既定で1リクエストずつ直列処理する。外部API（OpenAI/Google/LINE）待ちが
+      # ヘルスチェックまで巻き込むため複数ワーカーにする（entrypoint の --no-reload が前提）。
+      - key: PHP_CLI_SERVER_WORKERS
+        value: '4'
+
+      # Sanctum トークンの有効期限（分）。既定は無期限のため明示する
+      - key: SANCTUM_EXPIRATION
+        value: '720'
+
+      # 写真の署名付きURLの有効期間（分）
+      - key: PHOTO_URL_TTL_MINUTES
+        value: '60'
+
+      # DB接続のTLS要求。既定の prefer はサーバがTLSを提供しないと平文にフォールバックする。
+      # !! 未検証のまま有効化すると entrypoint の `set -e` + `migrate --force` で起動不能＝全断する
+      #    （ローカルのTLS無効postgresで ExitCode=1 を再現済み）。
+      #    docs/runbook-hardening.md の手順1で疎通確認したうえで、以下のコメントを外して再デプロイするか
+      #    Render ダッシュボードの Environment で DB_SSLMODE=require を設定すること。
+      # - key: DB_SSLMODE
+      #   value: require
+
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_HOST

@@ -18,6 +18,11 @@
   - バケット名、S3 API エンドポイント（`https://<accountid>.r2.cloudflarestorage.com`）
   - 公開URL（R2 のパブリックバケットURL、または独自ドメイン）
 
+> **既存環境へハードニング（2026-09-02）を反映する場合は、本書ではなく
+> [runbook-hardening.md](runbook-hardening.md) の手順に従うこと。**
+> `DB_SSLMODE` の疎通確認・本番パスワードのローテーション・R2 の公開停止など、
+> 順序を誤ると全断や情報漏洩につながる手動作業が含まれる。
+
 ---
 
 ## 1. バックエンド（Render）
@@ -27,14 +32,21 @@
    - `APP_KEY`: ローカルで `php artisan key:generate --show` を実行して出た `base64:...` を貼る
    - `APP_URL`: 払い出された API のURL（例 `https://realize-beauty-api.onrender.com`）
    - `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` / `R2_ENDPOINT` / `R2_PUBLIC_URL`
-   - `CORS_ALLOWED_ORIGINS`: いったん空（後で Pages のURLを入れる）
+   - `CORS_ALLOWED_ORIGINS`: いったん空（Pages のURL確定後に §3 で入れる）。
+     空の間は別オリジンからの API 呼び出しがブラウザにブロックされる
    - `OPENAI_API_KEY`: 今は空でよい（AI要約は後日）
 3. デプロイ完了後、`https://<api>/up` が 200 を返すことを確認
-4. **初期ユーザー投入**: Render の Shell で以下を実行（ログイン用 `admin@example.com` / `password` を作成）
+4. **初期オーナー作成**: 以下を実行してログインユーザーを作る。パスワードは対話入力で、
+   12文字以上が必須。API サービスの **Shell** から実行する
    ```sh
-   php artisan db:seed --force
+   php artisan salon:create-owner
    ```
-   （シーダーは冪等なので複数回実行しても安全）
+   （無料プランなど Shell が使えない環境では、ローカルから
+   `DB_URL='postgres://...' php artisan salon:create-owner` として本番DBに向ける）
+   `php artisan db:seed` は**使わない**。デモの顧客・予約と既定パスワード（`password`）の
+   ユーザーを投入してしまうため。Render 上（`APP_ENV=production`）では `DatabaseSeeder` が
+   例外を投げて止まるが、**上のようにローカルから本番DBへ向けて実行した場合はこのガードは効かない**
+   （環境変数を見ているため）。本番DBに対して `db:seed` を実行しないこと。
 
 ---
 
@@ -52,7 +64,10 @@
 
 ---
 
-## 3. 仕上げ（CORS を閉じる）
+## 3. 仕上げ（CORS でフロントのURLを許可する）
+
+CORS は未設定なら全拒否（フェイルクローズ）のため、ここを飛ばすとフロントから API を
+呼べない。逆に、設定を忘れても全オリジンに開放されることはない。
 
 1. Render の API サービスの環境変数 `CORS_ALLOWED_ORIGINS` に Pages のURL
    （例 `https://realize-beauty.pages.dev`）を設定して再デプロイ

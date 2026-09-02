@@ -20,10 +20,26 @@ class Photo extends Model
         'sort_order',
     ];
 
+    /**
+     * 施術写真のURL。private バケット（本番の R2）では恒久的な公開URLを配らず、
+     * 期限付きの署名付きURLを都度発行する。public ディスク（ローカル）は従来どおり。
+     */
     protected function url(): Attribute
     {
         return Attribute::make(
-            get: fn () => Storage::url($this->path),
+            get: function (): string {
+                $disk = Storage::disk();
+                $name = config('filesystems.default');
+
+                if (config("filesystems.disks.{$name}.visibility") === 'private' && $disk->providesTemporaryUrls()) {
+                    return $disk->temporaryUrl(
+                        $this->path,
+                        now()->addMinutes((int) config('filesystems.photo_url_ttl_minutes')),
+                    );
+                }
+
+                return $disk->url($this->path);
+            },
         );
     }
 

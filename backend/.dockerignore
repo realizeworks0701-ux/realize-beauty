@@ -1,0 +1,36 @@
+# Docker ビルドコンテキストから除外するもの。
+# Dockerfile は `COPY . .` の前に `composer install --no-dev` を実行するため、
+# ホストの vendor/ を持ち込むと本番イメージが dev 依存込みで上書きされてしまう。
+# .env も git 管理外なだけでビルドコンテキストには含まれるため、明示的に除外する。
+
+# 依存はイメージ内で解決する
+vendor/
+node_modules/
+
+# 認証情報・ローカル設定（イメージには一切入れない）
+.env
+.env.*
+
+# VCS / エディタ / OS
+.git/
+.gitignore
+.gitattributes
+.vscode/
+.idea/
+.DS_Store
+
+# ローカル開発専用
+compose.yaml
+public/hot
+public/storage
+storage/logs/*.log
+storage/pail/
+.phpunit.cache/
+.phpunit.result.cache
+
+# テスト（本番イメージには不要。dump-autoload は --no-dev で実行する）
+tests/
+phpunit.xml
+
+# ドキュメント
+README.md

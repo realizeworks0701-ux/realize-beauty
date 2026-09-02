@@ -14,7 +14,7 @@ class BookingPageResource extends JsonResource
     {
         return [
             'booking_slug' => $this->booking_slug,
-            'booking_page_url' => rtrim(config('app.url'), '/').'/booking/'.$this->booking_slug,
+            'booking_page_url' => rtrim(config('app.frontend_url'), '/').'/booking/'.$this->booking_slug,
         ];
     }
 }

@@ -14,6 +14,11 @@ services:
         environment:
             WWWUSER: '${WWWUSER}'
             LARAVEL_SAIL: 1
+            # コンテナ内から DB へは compose のサービス名で到達する（127.0.0.1 はアプリ
+            # コンテナ自身を指すため DB に届かない）。実環境変数は .env より優先されるので、
+            # .env はホスト実行用の 127.0.0.1 のままでよい。
+            # artisan serve に届かせるため AppServiceProvider で DB_HOST を許可リストに追加している。
+            DB_HOST: pgsql
             XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
             XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
             IGNITION_LOCAL_SITES_PATH: '${PWD}'
@@ -26,7 +31,8 @@ services:
     pgsql:
         image: 'postgres:18-alpine'
         ports:
-            - '${FORWARD_DB_PORT:-5432}:5432'
+            # 既知の認証情報（sail/password）のDBをLANに晒さないためループバックに限定する
+            - '127.0.0.1:${FORWARD_DB_PORT:-5432}:5432'
         environment:
             PGPASSWORD: '${DB_PASSWORD:-secret}'
             POSTGRES_DB: '${DB_DATABASE}'

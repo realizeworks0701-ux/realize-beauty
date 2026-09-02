@@ -51,6 +51,50 @@ class AuthApiTest extends TestCase
             ->assertJsonValidationErrors(['email', 'password']);
     }
 
+    public function test_login_is_throttled_after_repeated_failures(): void
+    {
+        User::factory()->create([
+            'email' => 'staff@example.com',
+            'password' => Hash::make('secret123'),
+        ]);
+
+        foreach (range(1, 5) as $ignored) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'staff@example.com',
+                'password' => 'wrong',
+            ])->assertStatus(422);
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'staff@example.com',
+            'password' => 'wrong',
+        ])->assertStatus(429);
+    }
+
+    public function test_login_throttle_does_not_lock_out_other_accounts(): void
+    {
+        User::factory()->create([
+            'email' => 'staff@example.com',
+            'password' => Hash::make('secret123'),
+        ]);
+        User::factory()->create([
+            'email' => 'owner@example.com',
+            'password' => Hash::make('secret123'),
+        ]);
+
+        foreach (range(1, 6) as $ignored) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'staff@example.com',
+                'password' => 'wrong',
+            ]);
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'owner@example.com',
+            'password' => 'secret123',
+        ])->assertOk();
+    }
+
     public function test_me_returns_authenticated_user(): void
     {
         $user = $this->actingAsSalonUser();

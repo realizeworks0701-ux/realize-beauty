@@ -285,6 +285,12 @@ class LineSettingsApiTest extends TestCase
 
     public function test_booking_page_returns_slug_and_url(): void
     {
+        // 予約ページ（/booking/:slug）はSPA側のルートのため、APIのURLではなくフロントのURLを返す
+        config([
+            'app.url' => 'https://api.example.com',
+            'app.frontend_url' => 'https://salon.example.com',
+        ]);
+
         $user = $this->actingAsSalonUser();
         $slug = $user->salon->booking_slug;
 
@@ -292,7 +298,7 @@ class LineSettingsApiTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('data.booking_slug', $slug);
-        $response->assertJsonPath('data.booking_page_url', rtrim(config('app.url'), '/').'/booking/'.$slug);
+        $response->assertJsonPath('data.booking_page_url', 'https://salon.example.com/booking/'.$slug);
         $this->assertMatchesRegularExpression('/^[a-z0-9]{16}$/', $slug);
     }
 

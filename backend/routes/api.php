@@ -44,8 +44,9 @@ Route::prefix('public/v1')->group(function () {
 
 Route::prefix('v1')->group(function () {
 
-    // Auth
-    Route::post('/auth/login', [AuthController::class, 'login']);
+    // Auth（認証なしのため総当たり対象。throttle 必須）
+    Route::post('/auth/login', [AuthController::class, 'login'])
+        ->middleware('throttle:auth-login');
 
     // Google OAuth コールバック（認証なし。Google からのブラウザリダイレクトで Bearer を持たないため state で検証）
     Route::get('/google-calendar/callback', [GoogleCalendarController::class, 'callback']);

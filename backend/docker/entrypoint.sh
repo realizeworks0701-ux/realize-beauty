@@ -9,7 +9,12 @@ php artisan route:cache
 # マイグレーション（本番なので --force）
 php artisan migrate --force
 
-# 本番は R2（外部ストレージ）を使うため storage:link は失敗しても無視する
-php artisan storage:link || true
+# 写真は R2（外部ストレージ）に置くため public/storage のシンボリックリンクは不要。
+# 非rootで実行しており public/ に書き込めないので、ローカルディスク構成のときだけ作る。
+if [ "${FILESYSTEM_DISK:-r2}" != "r2" ]; then
+    php artisan storage:link || true
+fi
 
-exec php artisan serve --host=0.0.0.0 --port="${PORT:-8080}"
+# --no-reload はファイル監視を止めるだけでなく、PHP_CLI_SERVER_WORKERS による
+# 複数ワーカー起動の前提条件（無いと1ワーカーに黙って降格する）。
+exec php artisan serve --no-reload --host=0.0.0.0 --port="${PORT:-8080}"

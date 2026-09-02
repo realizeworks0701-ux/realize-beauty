@@ -13,11 +13,22 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // 既定パスワードのユーザーとデモの顧客・予約を投入するため本番では実行しない。
+        // 本番の初期オーナーは `php artisan salon:create-owner` で作成する。
+        // 注意: 判定は APP_ENV のため、ローカルから DB_URL で本番DBを指した実行は防げない。
+        if (app()->isProduction()) {
+            throw new RuntimeException(
+                'DatabaseSeeder はデモデータ用のため本番環境では実行できません。'
+                    .'初期オーナーは `php artisan salon:create-owner` で作成してください。'
+            );
+        }
+
         $salon = Salon::firstOrCreate(
             ['name' => 'Realize Beauty'],
             [
@@ -33,7 +44,7 @@ class DatabaseSeeder extends Seeder
             [
                 'salon_id' => $salon->id,
                 'name' => '山田 太郎',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('email'),
                 'role' => Role::Owner,
                 'is_active' => true,
             ],
@@ -44,7 +55,7 @@ class DatabaseSeeder extends Seeder
             [
                 'salon_id' => $salon->id,
                 'name' => '田中 美咲',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('email'),
                 'role' => Role::Staff,
                 'is_active' => true,
             ],

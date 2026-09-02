@@ -34,7 +34,9 @@ SPA と API は分離構成（ADR-001 / ADR-011）であり、それぞれに適
 - フロントの API 接続先を `VITE_API_BASE_URL` で注入（本番は API の絶対URL、
   開発は未設定で Vite プロキシ経由の相対パス）
 - 別ドメイン間通信のため CORS を `config/cors.php`（`CORS_ALLOWED_ORIGINS`）で制御。
-  認証は Bearer トークンのため Cookie/CSRF は不要で `supports_credentials=false`
+  認証は Bearer トークンのため Cookie/CSRF は不要で `supports_credentials=false`。
+  未設定時は全拒否（フェイルクローズ）とし、環境変数の設定漏れが全オリジン開放に
+  ならないようにする
 - `filesystems.php` に `r2` ディスク（S3互換）を追加し、`league/flysystem-aws-s3-v3` を導入
 - Render 用の `backend/Dockerfile`・`backend/docker/entrypoint.sh`・ルートの `render.yaml`（Blueprint）
 - SPA ルーティングは `frontend/public/_redirects` で index.html にフォールバック
