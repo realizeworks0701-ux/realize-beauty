@@ -18,7 +18,7 @@
   /* 第2アクセント（情報ボックス・土曜・manager・draft・外部予定・no_show） */
   --rb-accent: #c9a227;
   --rb-accent-soft: #f6efdc;
-  --rb-accent-deep: #8a6d1f;
+  --rb-accent-deep: #6f5714;
 
   /* 状態色 */
   --rb-success: #067647;
@@ -276,4 +276,32 @@ h3 {
 
 :root.rb-legacy-theme .p-toast .p-toast-message {
   backdrop-filter: blur(18px);
+}
+
+/* PrimeVue（preset.ts）が :root に注入する --p-primary-* / --p-highlight-* /
+   --p-focus-ring-color はスコープされないため、レガシー配下でも旧ピンクに
+   上書きする。値は刷新前の preset.ts（722abd3 の直前）の primary スケールと
+   highlight/focusRing 設定と同一（DatePicker の選択円・InputText のフォーカス枠・
+   severity 無指定 Button 等がパープルのまま漏れる問題の対策）。 */
+:root.rb-legacy-theme {
+  --p-primary-50: #fdf2f5;
+  --p-primary-100: #fbe4eb;
+  --p-primary-200: #f6c9d6;
+  --p-primary-300: #efa8bc;
+  --p-primary-400: #e48aa3;
+  --p-primary-500: #d86c8a;
+  --p-primary-600: #c25373;
+  --p-primary-700: #a2415d;
+  --p-primary-800: #83344b;
+  --p-primary-900: #6b2b3e;
+  --p-primary-950: #3f1622;
+  --p-primary-color: #d86c8a;
+  --p-primary-contrast-color: #ffffff;
+  --p-primary-hover-color: #c25373;
+  --p-primary-active-color: #a2415d;
+  --p-highlight-background: #fbe4eb;
+  --p-highlight-focus-background: #f6c9d6;
+  --p-highlight-color: #a2415d;
+  --p-highlight-focus-color: #83344b;
+  --p-focus-ring-color: #d86c8a;
 }

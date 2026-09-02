@@ -765,7 +765,7 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
 }
 
 .state-tag.disconnected {
-  background: rgba(154, 141, 145, 0.16);
+  background: rgba(111, 106, 125, 0.12);
   color: var(--rb-text-muted);
 }
 

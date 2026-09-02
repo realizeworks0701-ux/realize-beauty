@@ -182,7 +182,7 @@ function confirmLogout(): void {
   gap: 0.7rem;
   padding: 0.7rem 0.9rem;
   border-radius: var(--rb-radius-md);
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.95);
   text-decoration: none;
   font-weight: 500;
   font-size: 0.95rem;

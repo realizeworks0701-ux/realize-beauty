@@ -283,7 +283,7 @@ function rowError(index: number): string {
 }
 
 .hours-row.invalid {
-  border-color: var(--rb-pink);
+  border-color: var(--rb-danger);
 }
 
 .day-label {
@@ -303,7 +303,7 @@ function rowError(index: number): string {
 }
 
 .day-label.saturday {
-  background: var(--rb-beige);
+  background: var(--rb-accent-soft);
   color: var(--rb-accent-deep);
 }
 
