@@ -679,7 +679,7 @@ function onDeleted(): void {
 }
 
 .reservation-block.cancelled {
-  background: rgba(111, 106, 125, 0.55);
+  background: var(--rb-text-muted);
   text-decoration: line-through;
 }
 
