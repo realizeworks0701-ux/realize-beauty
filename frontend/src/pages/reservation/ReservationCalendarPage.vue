@@ -529,7 +529,7 @@ function onDeleted(): void {
   top: 0;
   z-index: 5;
   padding: 0.6rem 0.5rem;
-  background: #fdf5f7;
+  background: var(--rb-primary-faint);
   border-bottom: 1px solid var(--rb-border);
   font-size: 0.85rem;
   font-weight: 700;
@@ -543,7 +543,7 @@ function onDeleted(): void {
 .staff-head i {
   margin-right: 0.35rem;
   font-size: 0.78rem;
-  color: var(--rb-pink);
+  color: var(--rb-primary);
 }
 
 .corner-cell {
@@ -555,7 +555,7 @@ function onDeleted(): void {
   position: sticky;
   left: 0;
   z-index: 4;
-  background: #fffdfc;
+  background: var(--rb-surface);
 }
 
 .time-cell {
@@ -593,16 +593,16 @@ function onDeleted(): void {
 }
 
 .slot-cell:hover {
-  background: var(--rb-pink-faint);
+  background: var(--rb-primary-faint);
 }
 
 /* 営業時間外（クリックは可能） */
 .slot-cell.outside {
-  background: rgba(240, 228, 232, 0.55);
+  background: var(--rb-surface-subtle);
 }
 
 .slot-cell.outside:hover {
-  background: rgba(240, 228, 232, 0.9);
+  background: var(--rb-primary-faint);
 }
 
 .reservation-block {
@@ -621,7 +621,7 @@ function onDeleted(): void {
   text-align: left;
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(216, 108, 138, 0.25);
+  box-shadow: 0 2px 8px rgba(124, 92, 191, 0.25);
   transition: filter 0.12s ease;
 }
 
@@ -639,18 +639,18 @@ function onDeleted(): void {
   gap: 0.05rem;
   z-index: 1;
   padding: 0.22rem 0.4rem;
-  border-left: 3px solid rgba(154, 141, 145, 0.6);
+  border-left: 3px solid rgba(111, 106, 125, 0.55);
   border-radius: 8px;
   overflow: hidden;
   background: repeating-linear-gradient(
     45deg,
-    rgba(154, 141, 145, 0.2),
-    rgba(154, 141, 145, 0.2) 6px,
-    rgba(154, 141, 145, 0.32) 6px,
-    rgba(154, 141, 145, 0.32) 12px
+    rgba(111, 106, 125, 0.16),
+    rgba(111, 106, 125, 0.16) 6px,
+    rgba(111, 106, 125, 0.26) 6px,
+    rgba(111, 106, 125, 0.26) 12px
   );
   font-family: var(--rb-font);
-  color: #63585c;
+  color: var(--rb-text);
   text-align: left;
   pointer-events: none;
 }
@@ -671,20 +671,20 @@ function onDeleted(): void {
 }
 
 .reservation-block.reserved {
-  background: #d86c8a;
+  background: var(--rb-primary);
 }
 
 .reservation-block.visited {
-  background: #b98aa6;
+  background: var(--rb-primary-deep);
 }
 
 .reservation-block.cancelled {
-  background: rgba(154, 141, 145, 0.55);
+  background: rgba(111, 106, 125, 0.55);
   text-decoration: line-through;
 }
 
 .reservation-block.no_show {
-  background: rgba(203, 169, 109, 0.65);
+  background: var(--rb-accent-deep);
 }
 
 .block-head {
@@ -708,7 +708,7 @@ function onDeleted(): void {
   padding: 0 0.28rem;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.9);
-  color: var(--rb-pink-deep);
+  color: var(--rb-primary-deep);
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.04em;
