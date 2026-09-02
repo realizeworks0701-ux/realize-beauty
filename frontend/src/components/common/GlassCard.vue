@@ -47,8 +47,8 @@ defineProps<{
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  background: var(--rb-pink-tint);
-  color: var(--rb-pink-strong);
+  background: var(--rb-primary-tint);
+  color: var(--rb-primary-strong);
   font-size: 0.9rem;
 }
 

@@ -39,8 +39,8 @@ withDefaults(
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: var(--rb-pink-tint);
-  color: var(--rb-pink);
+  background: var(--rb-primary-tint);
+  color: var(--rb-primary);
   font-size: 1.5rem;
   margin-bottom: 0.4rem;
 }

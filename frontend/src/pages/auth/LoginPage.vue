@@ -153,7 +153,7 @@ async function handleSubmit(): Promise<void> {
   width: 420px;
   height: 420px;
   background: var(--rb-gradient-rose);
-  opacity: 0.35;
+  opacity: 0.24;
 }
 
 .blob-beige {
@@ -162,7 +162,7 @@ async function handleSubmit(): Promise<void> {
   width: 460px;
   height: 460px;
   background: var(--rb-gradient-peach);
-  opacity: 0.35;
+  opacity: 0.24;
 }
 
 .blob-mauve {
@@ -171,7 +171,7 @@ async function handleSubmit(): Promise<void> {
   width: 260px;
   height: 260px;
   background: var(--rb-gradient-mauve);
-  opacity: 0.3;
+  opacity: 0.24;
 }
 
 /* ---------- カード ---------- */
@@ -182,6 +182,7 @@ async function handleSubmit(): Promise<void> {
   width: 100%;
   max-width: 420px;
   padding: 2.6rem 2.2rem 2.4rem;
+  box-shadow: 0 16px 48px rgba(90, 70, 150, 0.14);
 }
 
 @media (max-width: 480px) {
@@ -210,7 +211,7 @@ async function handleSubmit(): Promise<void> {
   background: var(--rb-gradient-brand);
   color: #fff;
   font-size: 1.6rem;
-  box-shadow: 0 8px 24px rgba(216, 108, 138, 0.35);
+  box-shadow: var(--rb-shadow-brand);
 }
 
 .brand-name {
@@ -237,7 +238,7 @@ async function handleSubmit(): Promise<void> {
 
 .brand-caption i {
   font-size: 0.72rem;
-  color: var(--rb-pink);
+  color: var(--rb-primary);
 }
 
 /* ---------- フォーム ---------- */
@@ -264,7 +265,7 @@ async function handleSubmit(): Promise<void> {
 }
 
 .field-label i {
-  color: var(--rb-pink);
+  color: var(--rb-primary);
   font-size: 0.8rem;
 }
 
@@ -273,7 +274,7 @@ async function handleSubmit(): Promise<void> {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.76rem;
-  color: var(--rb-pink-strong);
+  color: var(--rb-danger);
 }
 
 .field-error i {

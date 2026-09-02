@@ -33,12 +33,12 @@ const label = computed(() => recordStatusLabel(props.status))
 }
 
 .status-tag.completed {
-  background: var(--rb-pink-tint);
-  color: var(--rb-pink-deep);
+  background: var(--rb-primary-tint);
+  color: var(--rb-primary-deep);
 }
 
 .status-tag.draft {
-  background: var(--rb-beige-soft);
-  color: #8a7566;
+  background: var(--rb-accent-soft);
+  color: var(--rb-accent-deep);
 }
 </style>

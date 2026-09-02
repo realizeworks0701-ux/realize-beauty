@@ -45,7 +45,7 @@ defineProps<{
   background: var(--rb-gradient-brand);
   color: #fff;
   font-size: 1.15rem;
-  box-shadow: 0 6px 18px rgba(216, 108, 138, 0.3);
+  box-shadow: var(--rb-shadow-brand);
 }
 
 .title {
