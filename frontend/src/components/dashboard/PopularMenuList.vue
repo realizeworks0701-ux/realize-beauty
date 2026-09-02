@@ -97,7 +97,7 @@ function barWidth(count: number): string {
 .menu-bar-track {
   height: 6px;
   border-radius: 999px;
-  background: var(--rb-pink-faint);
+  background: var(--rb-primary-faint);
   overflow: hidden;
 }
 
@@ -111,6 +111,6 @@ function barWidth(count: number): string {
   flex-shrink: 0;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--rb-pink-deep);
+  color: var(--rb-primary-deep);
 }
 </style>

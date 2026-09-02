@@ -44,7 +44,7 @@ defineProps<{ reservations: Reservation[] }>()
 }
 
 .reservation-row:hover {
-  background: var(--rb-pink-faint);
+  background: var(--rb-primary-faint);
 }
 
 .time {
@@ -52,8 +52,8 @@ defineProps<{ reservations: Reservation[] }>()
   min-width: 52px;
   padding: 0.3rem 0.45rem;
   border-radius: 10px;
-  background: var(--rb-pink-tint);
-  color: var(--rb-pink-deep);
+  background: var(--rb-primary-tint);
+  color: var(--rb-primary-deep);
   font-family: var(--rb-font-display);
   font-weight: 700;
   font-size: 0.85rem;
@@ -93,12 +93,12 @@ defineProps<{ reservations: Reservation[] }>()
 }
 
 .status.is-reserved {
-  background: var(--rb-pink-tint);
-  color: var(--rb-pink-deep);
+  background: var(--rb-primary-tint);
+  color: var(--rb-primary-deep);
 }
 
 .status.is-visited {
-  background: var(--rb-beige-soft);
-  color: #7a6a4f;
+  background: var(--rb-accent-soft);
+  color: var(--rb-accent-deep);
 }
 </style>

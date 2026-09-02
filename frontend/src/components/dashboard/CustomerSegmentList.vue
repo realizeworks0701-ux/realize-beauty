@@ -38,19 +38,19 @@ const items = computed(() => [
 }
 
 .segment.is-new {
-  background: var(--rb-pink-faint);
+  background: var(--rb-primary-faint);
 }
 
 .segment.is-repeat {
-  background: var(--rb-pink-tint);
+  background: var(--rb-primary-tint);
 }
 
 .segment.is-dormant {
-  background: var(--rb-beige-soft);
+  background: var(--rb-accent-soft);
 }
 
 .segment.is-other {
-  background: #fff;
+  background: var(--rb-surface-subtle);
 }
 
 .segment-label {
