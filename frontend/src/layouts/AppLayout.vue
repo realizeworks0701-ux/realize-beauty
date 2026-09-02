@@ -47,37 +47,24 @@ function confirmLogout(): void {
 
 <template>
   <div class="app-shell">
-    <header class="app-header glass-card">
-      <div class="header-left">
-        <Button
-          icon="pi pi-bars"
-          severity="secondary"
-          text
-          rounded
-          class="menu-button"
-          aria-label="メニューを開く"
-          @click="menuOpen = true"
-        />
-        <RouterLink to="/dashboard" class="brand">
-          <span class="brand-icon"><i class="pi pi-sparkles" /></span>
-          <span class="brand-name">Realize Beauty</span>
+    <aside class="app-sidebar">
+      <RouterLink to="/dashboard" class="brand">
+        <span class="brand-icon"><i class="pi pi-sparkles" /></span>
+        <span class="brand-name">Realize Beauty</span>
+      </RouterLink>
+      <nav class="nav-list">
+        <RouterLink
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="nav-item"
+          :class="{ active: $route.path.startsWith(item.to) }"
+        >
+          <i :class="item.icon" />
+          <span>{{ item.label }}</span>
         </RouterLink>
-      </div>
-      <div class="header-right">
-        <div class="user-chip">
-          <Avatar :label="auth.user?.name?.charAt(0) ?? '?'" shape="circle" class="user-avatar" />
-          <span class="user-name">{{ auth.user?.name ?? '' }}</span>
-        </div>
-        <Button
-          icon="pi pi-sign-out"
-          severity="secondary"
-          text
-          rounded
-          aria-label="ログアウト"
-          @click="confirmLogout"
-        />
-      </div>
-    </header>
+      </nav>
+    </aside>
 
     <Drawer v-model:visible="menuOpen" header="メニュー" class="mobile-drawer">
       <nav class="nav-list">
@@ -94,21 +81,38 @@ function confirmLogout(): void {
       </nav>
     </Drawer>
 
-    <div class="app-body">
-      <aside class="app-sidebar glass-card">
-        <nav class="nav-list">
-          <RouterLink
-            v-for="item in navItems"
-            :key="item.to"
-            :to="item.to"
-            class="nav-item"
-            :class="{ active: $route.path.startsWith(item.to) }"
-          >
-            <i :class="item.icon" />
-            <span>{{ item.label }}</span>
+    <div class="app-column">
+      <header class="app-header">
+        <div class="header-left">
+          <Button
+            icon="pi pi-bars"
+            severity="secondary"
+            text
+            rounded
+            class="menu-button"
+            aria-label="メニューを開く"
+            @click="menuOpen = true"
+          />
+          <RouterLink to="/dashboard" class="brand brand-compact">
+            <span class="brand-icon"><i class="pi pi-sparkles" /></span>
+            <span class="brand-name">Realize Beauty</span>
           </RouterLink>
-        </nav>
-      </aside>
+        </div>
+        <div class="header-right">
+          <div class="user-chip">
+            <Avatar :label="auth.user?.name?.charAt(0) ?? '?'" shape="circle" class="user-avatar" />
+            <span class="user-name">{{ auth.user?.name ?? '' }}</span>
+          </div>
+          <Button
+            icon="pi pi-sign-out"
+            severity="secondary"
+            text
+            rounded
+            aria-label="ログアウト"
+            @click="confirmLogout"
+          />
+        </div>
+      </header>
 
       <main class="app-main">
         <RouterView />
@@ -120,26 +124,30 @@ function confirmLogout(): void {
 <style scoped>
 .app-shell {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1rem 1.25rem 1.5rem;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 220px 1fr;
 }
 
-.app-header {
+.app-sidebar {
   position: sticky;
-  top: 1rem;
-  z-index: 100;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.65rem 1.25rem;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.25rem 0.9rem;
+  background: var(--rb-gradient-brand);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  padding: 0 0.35rem;
   text-decoration: none;
 }
 
@@ -148,20 +156,83 @@ function confirmLogout(): void {
   place-items: center;
   width: 38px;
   height: 38px;
+  flex-shrink: 0;
   border-radius: 12px;
-  background: var(--rb-gradient-brand);
+  background: rgba(255, 255, 255, 0.2);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(216, 108, 138, 0.35);
 }
 
 .brand-name {
   font-family: var(--rb-font-display);
   font-weight: 700;
-  font-size: 1.15rem;
-  background: var(--rb-gradient-brand);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  font-size: 1.1rem;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--rb-radius-md);
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-item i {
+  font-size: 1.05rem;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.nav-item.active {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-weight: 700;
+}
+
+.app-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1.5rem;
+  background: var(--rb-surface);
+  border-bottom: 1px solid var(--rb-border);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.brand-compact {
+  display: none;
 }
 
 .header-right {
@@ -176,12 +247,12 @@ function confirmLogout(): void {
   gap: 0.5rem;
   padding: 0.25rem 0.85rem 0.25rem 0.3rem;
   border-radius: 999px;
-  background: var(--rb-pink-faint);
+  background: var(--rb-primary-faint);
   border: 1px solid var(--rb-border);
 }
 
 .user-avatar {
-  background: var(--rb-gradient-rose);
+  background: var(--rb-gradient-brand);
   color: #fff;
   font-weight: 700;
 }
@@ -191,73 +262,12 @@ function confirmLogout(): void {
   font-weight: 500;
 }
 
-.app-body {
-  display: flex;
-  gap: 1.25rem;
-  flex: 1;
-  align-items: flex-start;
-}
-
-.app-sidebar {
-  position: sticky;
-  top: 5.2rem;
-  width: 220px;
-  flex-shrink: 0;
-  padding: 0.9rem;
-}
-
-.nav-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.7rem 0.9rem;
-  border-radius: 14px;
-  color: var(--rb-text);
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 0.95rem;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.nav-item i {
-  font-size: 1.05rem;
-  color: var(--rb-pink);
-  transition: color 0.15s ease;
-}
-
-.nav-item:hover {
-  background: var(--rb-pink-faint);
-}
-
-.nav-item.active {
-  background: var(--rb-gradient-brand);
-  color: #fff;
-  box-shadow: 0 6px 18px rgba(216, 108, 138, 0.35);
-}
-
-.nav-item.active i {
-  color: #fff;
-}
-
 .app-main {
   flex: 1;
   min-width: 0;
-  max-width: 1160px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  width: 100%;
+  max-width: 1240px;
+  padding: 1.5rem;
 }
 
 .menu-button {
@@ -265,20 +275,25 @@ function confirmLogout(): void {
 }
 
 @media (max-width: 1023px) {
-  .menu-button {
-    display: inline-flex;
+  .app-shell {
+    grid-template-columns: 1fr;
   }
 
   .app-sidebar {
     display: none;
   }
 
-  .app-shell {
-    padding: 0.75rem 0.75rem 1.25rem;
+  .menu-button,
+  .brand-compact {
+    display: inline-flex;
   }
 
   .app-header {
-    top: 0.75rem;
+    padding: 0.7rem 1rem;
+  }
+
+  .app-main {
+    padding: 1rem;
   }
 }
 
