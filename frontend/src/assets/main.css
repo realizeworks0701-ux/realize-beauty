@@ -1,49 +1,72 @@
 /*
  * Realize Beauty — Design Tokens & Base Styles
- * 白×くすみピンク×ベージュ / Glassmorphism
- * docs/ui/design-system.md 参照
+ * 管理画面: ラベンダー/パープル × 不透明の白カード
+ * 公開予約ページ: 旧テーマ（白×くすみピンク×ベージュ / Glassmorphism）を
+ *   :root.rb-legacy-theme で維持する
+ * docs/ui/design-system.md / ADR-027 参照
  */
 
 :root {
   /* Colors */
-  --rb-pink: #d86c8a;
-  --rb-pink-strong: #c25373;
-  --rb-pink-deep: #a2415d;
-  --rb-pink-soft: #f6c9d6;
-  --rb-pink-tint: #fbe4eb;
-  --rb-pink-faint: #fdf2f5;
-  --rb-beige: #e9dac8;
-  --rb-beige-soft: #f3e9dd;
-  --rb-beige-deep: #d9c3aa;
-  --rb-bg: #fdf9f6;
-  --rb-border: #f0e4e8;
-  --rb-text: #4b4247;
-  --rb-text-muted: #9a8d91;
+  --rb-primary: #7c5cbf;
+  --rb-primary-strong: #6d4fa8;
+  --rb-primary-deep: #59408c;
+  --rb-primary-soft: #c9b8ec;
+  --rb-primary-tint: #ece5fa;
+  --rb-primary-faint: #f5f1fd;
 
-  /* Gradients */
-  --rb-gradient-rose: linear-gradient(135deg, #f7c8d3 0%, #d86c8a 100%);
-  --rb-gradient-peach: linear-gradient(135deg, #f5dcc8 0%, #dba37e 100%);
-  --rb-gradient-mauve: linear-gradient(135deg, #efd9e4 0%, #b98aa6 100%);
-  --rb-gradient-cream: linear-gradient(135deg, #f6ebd4 0%, #cba96d 100%);
-  --rb-gradient-brand: linear-gradient(135deg, #e48aa3 0%, #d86c8a 55%, #c25373 100%);
+  /* 第2アクセント（情報ボックス・土曜・manager・draft・外部予定・no_show） */
+  --rb-accent: #c9a227;
+  --rb-accent-soft: #f6efdc;
+  --rb-accent-deep: #8a6d1f;
 
-  /* Glass */
-  --rb-glass-bg: rgba(255, 255, 255, 0.72);
-  --rb-glass-border: rgba(255, 255, 255, 0.65);
-  --rb-glass-blur: blur(18px);
+  /* 状態色 */
+  --rb-success: #067647;
+  --rb-danger: #b42318;
+
+  /* Surface */
+  --rb-bg: #f7f6fb;
+  --rb-surface: #ffffff;
+  --rb-surface-subtle: #faf9fd;
+  --rb-border: #eeebf5;
+  --rb-text: #2e2a38;
+  --rb-text-muted: #6f6a7d;
+
+  /* Gradients（名前は後方互換のため据え置き。値はパープル4トーン） */
+  --rb-gradient-rose: linear-gradient(135deg, #b9a3e8 0%, #7c5cbf 100%);
+  --rb-gradient-peach: linear-gradient(135deg, #a7b6ef 0%, #6473c9 100%);
+  --rb-gradient-mauve: linear-gradient(135deg, #d5aae2 0%, #9b5cbf 100%);
+  --rb-gradient-cream: linear-gradient(135deg, #a9c9ea 0%, #5f86bf 100%);
+  --rb-gradient-brand: linear-gradient(160deg, #9b7bd6 0%, #7c5cbf 55%, #6d4fa8 100%);
+
+  /* Card */
+  --rb-card-bg: var(--rb-surface);
+  --rb-card-border: var(--rb-border);
 
   /* Shadow */
-  --rb-shadow-soft: 0 8px 32px rgba(216, 108, 138, 0.1);
-  --rb-shadow-hover: 0 12px 40px rgba(216, 108, 138, 0.18);
+  --rb-shadow-soft: 0 2px 8px rgba(90, 70, 150, 0.06);
+  --rb-shadow-hover: 0 8px 24px rgba(90, 70, 150, 0.12);
+  --rb-shadow-brand: 0 4px 14px rgba(124, 92, 191, 0.32);
 
   /* Radius */
-  --rb-radius-lg: 20px;
-  --rb-radius-md: 14px;
-  --rb-radius-sm: 12px;
+  --rb-radius-lg: 16px;
+  --rb-radius-md: 12px;
+  --rb-radius-sm: 10px;
 
   /* Fonts */
   --rb-font: 'Noto Sans JP', sans-serif;
-  --rb-font-display: 'Zen Maru Gothic', 'Noto Sans JP', sans-serif;
+  --rb-font-display: 'Noto Sans JP', sans-serif;
+
+  /* 後方互換エイリアス（既存の var(--rb-pink-*) / var(--rb-beige-*) 参照用） */
+  --rb-pink: var(--rb-primary);
+  --rb-pink-strong: var(--rb-primary-strong);
+  --rb-pink-deep: var(--rb-primary-deep);
+  --rb-pink-soft: var(--rb-primary-soft);
+  --rb-pink-tint: var(--rb-primary-tint);
+  --rb-pink-faint: var(--rb-primary-faint);
+  --rb-beige: var(--rb-accent);
+  --rb-beige-soft: var(--rb-accent-soft);
+  --rb-beige-deep: var(--rb-accent-deep);
 }
 
 *,
@@ -63,11 +86,11 @@ body {
   font-family: var(--rb-font);
   color: var(--rb-text);
   background-color: var(--rb-bg);
-  background-image:
-    radial-gradient(ellipse 60% 50% at 12% 0%, rgba(246, 201, 214, 0.55), transparent 65%),
-    radial-gradient(ellipse 55% 45% at 95% 12%, rgba(243, 233, 221, 0.9), transparent 70%),
-    radial-gradient(ellipse 50% 45% at 80% 95%, rgba(251, 228, 235, 0.6), transparent 65%),
-    radial-gradient(ellipse 45% 40% at 5% 90%, rgba(233, 218, 200, 0.5), transparent 65%);
+  background-image: radial-gradient(
+    ellipse 70% 55% at 15% 0%,
+    rgba(201, 184, 236, 0.22),
+    transparent 70%
+  );
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
@@ -86,11 +109,10 @@ h3 {
 
 /* ---------- Utilities ---------- */
 
+.rb-card,
 .glass-card {
-  background: var(--rb-glass-bg);
-  backdrop-filter: var(--rb-glass-blur);
-  -webkit-backdrop-filter: var(--rb-glass-blur);
-  border: 1px solid var(--rb-glass-border);
+  background: var(--rb-card-bg);
+  border: 1px solid var(--rb-card-border);
   border-radius: var(--rb-radius-lg);
   box-shadow: var(--rb-shadow-soft);
 }
@@ -129,12 +151,12 @@ h3 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--rb-pink-soft);
+  background: var(--rb-primary-soft);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--rb-pink);
+  background: var(--rb-primary);
 }
 
 /* ---------- PrimeVue tweaks ---------- */
@@ -155,7 +177,7 @@ h3 {
   ):not([class*='p-button-succ']):not([class*='p-button-contrast']) {
   background: var(--rb-gradient-brand);
   border: none;
-  box-shadow: 0 4px 14px rgba(216, 108, 138, 0.35);
+  box-shadow: var(--rb-shadow-brand);
 }
 
 .p-button:not(.p-button-outlined):not(.p-button-text):enabled:hover {
@@ -175,7 +197,7 @@ h3 {
 }
 
 .p-datatable .p-datatable-tbody > tr:hover {
-  background: rgba(251, 228, 235, 0.45);
+  background: var(--rb-primary-faint);
 }
 
 .p-datatable .p-datatable-tbody > tr > td {
@@ -194,9 +216,64 @@ h3 {
 
 .p-toast .p-toast-message {
   border-radius: var(--rb-radius-md);
-  backdrop-filter: var(--rb-glass-blur);
 }
 
 .p-dialog {
   border-radius: var(--rb-radius-lg);
+}
+
+/* Drawer のパネルは body へ Teleport されるため preset.ts で着色する。
+   閉じるボタンだけはグローバルで白系に上書きする。 */
+.p-drawer .p-drawer-close-button {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.p-drawer .p-drawer-close-button:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+/* ---------- Legacy theme（公開予約ページ専用・ADR-027） ---------- */
+
+:root.rb-legacy-theme {
+  --rb-pink: #d86c8a;
+  --rb-pink-strong: #c25373;
+  --rb-pink-deep: #a2415d;
+  --rb-pink-soft: #f6c9d6;
+  --rb-pink-tint: #fbe4eb;
+  --rb-pink-faint: #fdf2f5;
+  --rb-beige: #e9dac8;
+  --rb-beige-soft: #f3e9dd;
+  --rb-beige-deep: #d9c3aa;
+  --rb-bg: #fdf9f6;
+  --rb-border: #f0e4e8;
+  --rb-text: #4b4247;
+  --rb-text-muted: #9a8d91;
+  --rb-gradient-brand: linear-gradient(135deg, #e48aa3 0%, #d86c8a 55%, #c25373 100%);
+  --rb-radius-lg: 20px;
+  --rb-radius-md: 14px;
+  --rb-radius-sm: 12px;
+  --rb-font-display: 'Zen Maru Gothic', 'Noto Sans JP', sans-serif;
+  --rb-shadow-soft: 0 8px 32px rgba(216, 108, 138, 0.1);
+  --rb-shadow-hover: 0 12px 40px rgba(216, 108, 138, 0.18);
+  --rb-shadow-brand: 0 4px 14px rgba(216, 108, 138, 0.35);
+}
+
+:root.rb-legacy-theme body {
+  background-image:
+    radial-gradient(ellipse 60% 50% at 12% 0%, rgba(246, 201, 214, 0.55), transparent 65%),
+    radial-gradient(ellipse 55% 45% at 95% 12%, rgba(243, 233, 221, 0.9), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 80% 95%, rgba(251, 228, 235, 0.6), transparent 65%),
+    radial-gradient(ellipse 45% 40% at 5% 90%, rgba(233, 218, 200, 0.5), transparent 65%);
+}
+
+:root.rb-legacy-theme .glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+:root.rb-legacy-theme .p-toast .p-toast-message {
+  backdrop-filter: blur(18px);
 }

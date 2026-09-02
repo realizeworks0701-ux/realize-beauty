@@ -99,13 +99,13 @@ const router = createRouter({
       path: '/booking/cancel/:token',
       name: 'public-booking-cancel',
       component: () => import('@/pages/public/BookingCancelPage.vue'),
-      meta: { public: true },
+      meta: { public: true, legacyTheme: true },
     },
     {
       path: '/booking/:slug',
       name: 'public-booking',
       component: () => import('@/pages/public/BookingPage.vue'),
-      meta: { public: true },
+      meta: { public: true, legacyTheme: true },
     },
     {
       // /booking 配下の不正パスは公開用の「ページが見つかりません」に落とす
@@ -113,7 +113,7 @@ const router = createRouter({
       path: '/booking/:pathMatch(.*)*',
       name: 'public-not-found',
       component: () => import('@/pages/public/PublicNotFoundPage.vue'),
-      meta: { public: true },
+      meta: { public: true, legacyTheme: true },
     },
     {
       path: '/:pathMatch(.*)*',

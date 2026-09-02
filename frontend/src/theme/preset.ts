@@ -3,8 +3,9 @@ import Aura from '@primeuix/themes/aura'
 
 /**
  * Realize Beauty theme preset.
- * 白×くすみピンク×ベージュを基調とした女性向けテーマ。
- * docs/ui/design-system.md 参照。
+ * ラベンダー/パープルを基調とした管理画面テーマ。
+ * 色の値は main.css の --rb-* トークンと対応させること（二重管理のため）。
+ * docs/ui/design-system.md / ADR-027 参照。
  */
 export const RealizePreset = definePreset(Aura, {
   primitive: {
@@ -19,62 +20,64 @@ export const RealizePreset = definePreset(Aura, {
   },
   semantic: {
     primary: {
-      50: '#FDF2F5',
-      100: '#FBE4EB',
-      200: '#F6C9D6',
-      300: '#EFA8BC',
-      400: '#E48AA3',
-      500: '#D86C8A',
-      600: '#C25373',
-      700: '#A2415D',
-      800: '#83344B',
-      900: '#6B2B3E',
-      950: '#3F1622',
+      50: '#F5F1FD',
+      100: '#ECE5FA',
+      200: '#C9B8EC',
+      300: '#AC95E0',
+      400: '#9478D2',
+      500: '#7C5CBF',
+      600: '#6D4FA8',
+      700: '#59408C',
+      800: '#473370',
+      900: '#382959',
+      950: '#221935',
     },
     colorScheme: {
       light: {
         surface: {
           0: '#FFFFFF',
-          50: '#FDF9F6',
-          100: '#F8F1EC',
-          200: '#F0E4E8',
-          300: '#E3D3CB',
-          400: '#C9B2A8',
-          500: '#9A8D91',
-          600: '#7C6F73',
-          700: '#5F5457',
-          800: '#4B4247',
-          900: '#3A3236',
-          950: '#2A2427',
+          50: '#F7F6FB',
+          100: '#F1EFF8',
+          200: '#EEEBF5',
+          300: '#D9D4E6',
+          400: '#B4AEC6',
+          500: '#6F6A7D',
+          600: '#5C5768',
+          700: '#494553',
+          800: '#2E2A38',
+          900: '#241F2C',
+          950: '#17131D',
         },
         text: {
-          color: '#4B4247',
-          hoverColor: '#3A3236',
-          mutedColor: '#9A8D91',
-          hoverMutedColor: '#7C6F73',
+          color: '#2E2A38',
+          hoverColor: '#17131D',
+          mutedColor: '#6F6A7D',
+          hoverMutedColor: '#5C5768',
         },
         content: {
-          background: 'rgba(255, 255, 255, 0.72)',
-          hoverBackground: '#FBE4EB',
-          borderColor: '#F0E4E8',
-          color: '#4B4247',
-          hoverColor: '#3A3236',
+          background: '#FFFFFF',
+          hoverBackground: '#F5F1FD',
+          borderColor: '#EEEBF5',
+          color: '#2E2A38',
+          hoverColor: '#17131D',
         },
         highlight: {
-          background: '#FBE4EB',
-          focusBackground: '#F6C9D6',
-          color: '#A2415D',
-          focusColor: '#83344B',
+          background: '#ECE5FA',
+          focusBackground: '#C9B8EC',
+          color: '#59408C',
+          focusColor: '#473370',
         },
       },
     },
   },
   components: {
-    // カレンダーのオーバーレイは不透明にする（content.background は半透明のため、
-    // 背後の予約枠が透けて見えてしまう）
-    datepicker: {
-      panel: {
-        background: '{surface.0}',
+    // Drawer のパネルは body へ Teleport されるため scoped CSS が届かない。
+    // サイドバーと同じグラデーションをここで指定する。
+    drawer: {
+      root: {
+        background: 'linear-gradient(160deg, #9b7bd6 0%, #7c5cbf 55%, #6d4fa8 100%)',
+        borderColor: 'transparent',
+        color: '#ffffff',
       },
     },
   },
