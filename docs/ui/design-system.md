@@ -10,7 +10,7 @@
 - Glassmorphism（半透明 + backdrop-filter）は用いない。カードは不透明白 + 1px境界線 + 控えめな影で構成する
 - PrimeVueの操作感を保ちつつ、丸み・余白・アイコンで柔らかさを出す
 
-本ドキュメントは管理画面（`/dashboard` 以下の全ページ）を対象とする。公開Web予約ページ（`/booking/*`）は対象外で、ADR-020時点のデザイン（白×くすみピンク×ベージュ + Glassmorphism）を `rb-legacy-theme` により維持する。詳細は [ADR-027](../decisions/ADR-027-purple-theme.md) を参照。
+本ドキュメントは公開Web予約ページ（`/booking/*`）を除く全ページ（ダッシュボード・顧客・カルテ・予約・設定・ログイン）を対象とする。公開Web予約ページはADR-020時点のデザイン（白×くすみピンク×ベージュ + Glassmorphism）を `rb-legacy-theme` により維持する。詳細は [ADR-027](../decisions/ADR-027-purple-theme.md) を参照。
 
 ---
 
