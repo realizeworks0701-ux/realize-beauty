@@ -61,6 +61,19 @@ class CreateSalonOwnerCommandTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'owner@example.com']);
     }
 
+    public function test_rejects_input_broken_by_terminal_multibyte_truncation(): void
+    {
+        $options = $this->commandOptions();
+        // 「岸」(E5 B2 B8) の3バイト目が欠落した状態。Render の Shell の対話入力で実際に発生した
+        $options['--address'] = "札幌市平岸\xE5\xB2".'3-43-110';
+
+        $this->artisan('salon:create-owner', $options)
+            ->assertExitCode(1);
+
+        $this->assertDatabaseMissing('users', ['email' => 'owner@example.com']);
+        $this->assertDatabaseCount('salons', 0);
+    }
+
     public function test_rejects_duplicate_email(): void
     {
         User::factory()->create(['email' => 'owner@example.com']);

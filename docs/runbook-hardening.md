@@ -116,11 +116,25 @@ foreach ($rows as $r) { printf("#%d salon=%s %s role=%s active=%s deleted_at=%s%
 
 ### A. 0件の場合（`migrate:fresh` 後はこちら）
 
+**日本語を含む項目はオプションで渡す。** Render の Shell の対話入力では多バイト文字が
+1バイト欠けることがあり、`SQLSTATE[22021] invalid byte sequence for encoding "UTF8"` で失敗する
+（「岸」= `E5 B2 B8` の3バイト目が落ちる、等）。パスワードだけは対話入力（非表示・履歴に残らない）。
+
 ```sh
-php artisan salon:create-owner
-# サロン名・電話・郵便番号・住所・氏名・メールを対話入力
-# パスワードは12文字以上・非表示入力（Shell の履歴に残らない）
+php artisan salon:create-owner \
+  --salon='サロン名' \
+  --phone='08000000000' \
+  --postal-code='0000000' \
+  --address='札幌市豊平区…' \
+  --name='山田 太郎' \
+  --email='owner@example.com'
+# → パスワードを2回入力（12文字以上）
 ```
+
+入力が壊れていた場合はDBに届く前にコマンドが弾き、どの項目が壊れたかを表示する。
+
+> 対話入力しか使えない場合は、まず ASCII だけで作成し、日本語のサロン名・住所は
+> 作成後に管理画面から修正するのが確実。
 
 作成されるサロンには `booking_slug`（公開予約ページ用の16文字）が `creating` フックで自動採番される。
 

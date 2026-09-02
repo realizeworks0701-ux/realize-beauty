@@ -22,6 +22,21 @@ class CreateSalonOwner extends Command
 
     protected $description = '初期オーナーユーザーを作成する（パスワードは対話入力。本番の初期投入用）';
 
+    /**
+     * 端末やシェル経由で多バイト文字が分断されると、DB挿入時に
+     * SQLSTATE[22021] invalid byte sequence となり原因が分かりにくい。手前で弾く。
+     *
+     * @param  array<string, string|null>  $input
+     * @return list<string>
+     */
+    private function fieldsWithBrokenEncoding(array $input): array
+    {
+        return array_keys(array_filter(
+            $input,
+            fn (?string $value) => $value !== null && ! mb_check_encoding($value, 'UTF-8'),
+        ));
+    }
+
     public function handle(): int
     {
         $input = [
@@ -31,8 +46,17 @@ class CreateSalonOwner extends Command
             'address' => $this->option('address') ?: $this->ask('サロンの住所'),
             'name' => $this->option('name') ?: $this->ask('オーナーの氏名'),
             'email' => $this->option('email') ?: $this->ask('ログイン用メールアドレス'),
-            'password' => $this->secret('パスワード（12文字以上）'),
         ];
+
+        if ($broken = $this->fieldsWithBrokenEncoding($input)) {
+            $this->error('入力が UTF-8 として壊れています: '.implode(', ', $broken));
+            $this->line('対話入力で多バイト文字が分断される環境（Render の Shell など）がある。');
+            $this->line('オプションで渡し直すこと: php artisan salon:create-owner --salon=... --address=... --name=...');
+
+            return self::FAILURE;
+        }
+
+        $input['password'] = $this->secret('パスワード（12文字以上）');
 
         $validator = Validator::make($input, [
             'salon' => ['required', 'string', 'max:255'],
@@ -56,6 +80,11 @@ class CreateSalonOwner extends Command
             $this->error('パスワードが一致しません。');
 
             return self::FAILURE;
+        }
+
+        $existing = Salon::where('name', $input['salon'])->first();
+        if ($existing) {
+            $this->warn("同名のサロンが既にあるため再利用する（salon_id={$existing->id}）。電話番号・住所は既存の値のまま。");
         }
 
         $salon = Salon::firstOrCreate(
