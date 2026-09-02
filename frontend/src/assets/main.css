@@ -236,15 +236,15 @@ h3 {
 /* ---------- Legacy theme（公開予約ページ専用・ADR-027） ---------- */
 
 :root.rb-legacy-theme {
-  --rb-pink: #d86c8a;
-  --rb-pink-strong: #c25373;
-  --rb-pink-deep: #a2415d;
-  --rb-pink-soft: #f6c9d6;
-  --rb-pink-tint: #fbe4eb;
-  --rb-pink-faint: #fdf2f5;
-  --rb-beige: #e9dac8;
-  --rb-beige-soft: #f3e9dd;
-  --rb-beige-deep: #d9c3aa;
+  --rb-primary: #d86c8a;
+  --rb-primary-strong: #c25373;
+  --rb-primary-deep: #a2415d;
+  --rb-primary-soft: #f6c9d6;
+  --rb-primary-tint: #fbe4eb;
+  --rb-primary-faint: #fdf2f5;
+  --rb-accent: #e9dac8;
+  --rb-accent-soft: #f3e9dd;
+  --rb-accent-deep: #d9c3aa;
   --rb-bg: #fdf9f6;
   --rb-border: #f0e4e8;
   --rb-text: #4b4247;
