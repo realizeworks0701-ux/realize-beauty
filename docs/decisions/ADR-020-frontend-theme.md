@@ -1,5 +1,7 @@
 # ADR-020: Frontend Theme（白×くすみピンク×ベージュ / Glassmorphism）
 
+> **本 ADR は [ADR-027](ADR-027-purple-theme.md) により置換された（2026-08-30）。以下は当時の決定の記録である。**
+
 ## Status
 
 Accepted
