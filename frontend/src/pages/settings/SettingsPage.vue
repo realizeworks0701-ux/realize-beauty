@@ -195,7 +195,7 @@ function confirmLogout(): void {
   font-family: var(--rb-font-display);
   font-size: 1.9rem;
   font-weight: 700;
-  box-shadow: 0 6px 18px rgba(216, 108, 138, 0.3);
+  box-shadow: var(--rb-shadow-brand);
 }
 
 .account-info {
@@ -308,7 +308,7 @@ function confirmLogout(): void {
   padding: 0.8rem 0.9rem;
   border-radius: var(--rb-radius-md);
   border: 1px solid var(--rb-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
   text-decoration: none;
   color: var(--rb-text);
   transition:

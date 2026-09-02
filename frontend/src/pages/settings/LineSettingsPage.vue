@@ -518,7 +518,7 @@ function confirmDisconnect(): void {
 
 .state-tag.unverified {
   background: var(--rb-beige-soft);
-  color: #8a7566;
+  color: var(--rb-accent-deep);
 }
 
 .state-tag.unconfigured {
@@ -589,7 +589,7 @@ function confirmDisconnect(): void {
   align-items: center;
   gap: 0.3rem;
   font-size: 0.76rem;
-  color: var(--rb-pink-strong);
+  color: var(--rb-danger);
 }
 
 .form-note {
@@ -633,7 +633,7 @@ function confirmDisconnect(): void {
   padding: 0.65rem 0.85rem;
   border-radius: var(--rb-radius-sm);
   border: 1px solid var(--rb-border);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--rb-surface-subtle);
   font-size: 0.82rem;
   color: var(--rb-text);
   overflow-x: auto;

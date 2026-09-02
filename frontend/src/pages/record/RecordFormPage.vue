@@ -515,7 +515,7 @@ async function handleFileSelected(event: Event): Promise<void> {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  color: var(--rb-pink-strong);
+  color: var(--rb-danger);
   font-size: 0.78rem;
 }
 
@@ -535,7 +535,7 @@ async function handleFileSelected(event: Event): Promise<void> {
   gap: 0.75rem;
   padding: 1rem 1.1rem 1.15rem;
   border-radius: var(--rb-radius-md);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
   border: 1px solid var(--rb-border);
 }
 

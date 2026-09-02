@@ -275,7 +275,7 @@ function rowError(index: number): string {
   padding: 0.6rem 0.8rem;
   border-radius: var(--rb-radius-md);
   border: 1px solid var(--rb-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
 }
 
 .hours-row.closed {
@@ -304,7 +304,7 @@ function rowError(index: number): string {
 
 .day-label.saturday {
   background: var(--rb-beige);
-  color: #8a7566;
+  color: var(--rb-accent-deep);
 }
 
 .closed-toggle {
@@ -337,7 +337,7 @@ function rowError(index: number): string {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  color: var(--rb-pink-strong);
+  color: var(--rb-danger);
   font-size: 0.78rem;
 }
 

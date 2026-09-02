@@ -313,7 +313,7 @@ function birthdayText(target: Customer): string {
   gap: 0.3rem;
   padding: 0.85rem 1rem;
   border-radius: var(--rb-radius-md);
-  background: rgba(253, 242, 245, 0.5);
+  background: var(--rb-primary-faint);
   border: 1px solid var(--rb-border);
 }
 
@@ -396,7 +396,7 @@ function birthdayText(target: Customer): string {
   padding: 0.85rem 1rem;
   border-radius: var(--rb-radius-md);
   border: 1px solid var(--rb-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
   color: var(--rb-text);
   text-decoration: none;
   transition:
@@ -408,7 +408,7 @@ function birthdayText(target: Customer): string {
 .record-row:hover {
   transform: translateY(-2px);
   box-shadow: var(--rb-shadow-hover);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--rb-surface);
 }
 
 .record-date {

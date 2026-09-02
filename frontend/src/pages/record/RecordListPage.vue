@@ -251,8 +251,8 @@ onMounted(() => {
   border-radius: 50%;
   background: var(--rb-gradient-rose);
   box-shadow:
-    0 0 0 4px rgba(246, 201, 214, 0.45),
-    0 2px 6px rgba(216, 108, 138, 0.35);
+    0 0 0 4px rgba(201, 184, 236, 0.55),
+    0 2px 6px rgba(124, 92, 191, 0.35);
 }
 
 .record-card {

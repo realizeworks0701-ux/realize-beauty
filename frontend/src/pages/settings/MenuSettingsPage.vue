@@ -520,7 +520,7 @@ function rowClass(menu: Menu): string {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  color: var(--rb-pink-strong);
+  color: var(--rb-danger);
   font-size: 0.78rem;
 }
 

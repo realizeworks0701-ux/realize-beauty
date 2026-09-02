@@ -367,7 +367,7 @@ async function handleFileSelected(event: Event): Promise<void> {
   margin: 0;
   padding: 0.85rem 1rem;
   border-radius: var(--rb-radius-md);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
   border: 1px solid var(--rb-border);
   font-size: 0.92rem;
   line-height: 1.7;

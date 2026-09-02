@@ -722,7 +722,7 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
   padding: 0.95rem 1.1rem;
   border-radius: var(--rb-radius-md);
   border: 1px solid var(--rb-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--rb-surface-subtle);
 }
 
 .row-head {
@@ -761,7 +761,7 @@ function confirmDisconnect(connection: GoogleCalendarConnection): void {
 
 .state-tag.needs-reconnect {
   background: var(--rb-beige-soft);
-  color: #8a7566;
+  color: var(--rb-accent-deep);
 }
 
 .state-tag.disconnected {
