@@ -119,3 +119,23 @@ services:
       # （例 https://realize-beauty.pages.dev）。未設定だと APP_URL にフォールバックし戻れない。
       - key: FRONTEND_URL
         sync: false
+
+      # サブスクリプション課金（ADR-029）。本番は必ず Live Mode の値を入れる。
+      # APP_ENV=production に Test キー（sk_test_）が入っていると、決済系APIの呼び出しは
+      # 実行前に例外で止まる（機能制御そのものは Stripe 未設定でも動く）。
+      # 設定後に `php artisan stripe:check` で取り違えとPrice IDの重複を確認すること。
+      - key: STRIPE_SECRET
+        sync: false
+      - key: STRIPE_KEY
+        sync: false
+      # 本番の Webhook エンドポイント（{APP_URL}/api/webhooks/stripe）に発行された署名シークレット。
+      # DEV 用とは別の値になる。未設定だと Webhook が 400 になり契約状態が同期されない。
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Live Mode で作成した Price ID。Test Mode のものとは別で、接頭辞では判別できない。
+      - key: STRIPE_PRICE_LITE
+        sync: false
+      - key: STRIPE_PRICE_STANDARD
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
