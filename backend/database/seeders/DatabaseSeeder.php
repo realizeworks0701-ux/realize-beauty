@@ -4,11 +4,14 @@ namespace Database\Seeders;
 
 use App\Enums\ReservationStatus;
 use App\Enums\Role;
+use App\Enums\SubscriptionPlan;
+use App\Enums\SubscriptionStatus;
 use App\Models\BusinessHour;
 use App\Models\Customer;
 use App\Models\Menu;
 use App\Models\Reservation;
 use App\Models\Salon;
+use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -37,6 +40,11 @@ class DatabaseSeeder extends Seeder
                 'address' => '東京都渋谷区神宮前1-1-1',
                 'is_active' => true,
             ],
+        );
+
+        Subscription::firstOrCreate(
+            ['salon_id' => $salon->id],
+            ['plan' => SubscriptionPlan::Pro, 'status' => SubscriptionStatus::Active],
         );
 
         $owner = User::updateOrCreate(

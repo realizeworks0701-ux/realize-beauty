@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Feature;
 use App\Enums\ReservationSource;
 use App\Enums\ReservationStatus;
 use App\Jobs\SendBookingConfirmationJob;
@@ -17,6 +18,8 @@ use App\Repositories\MenuRepository;
 use App\Repositories\ReservationRepository;
 use App\Repositories\SalonRepository;
 use App\Repositories\UserRepository;
+use App\Services\Billing\EntitlementService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +46,7 @@ class PublicBookingService
     private const ADD_FRIEND_URL_PREFIX = 'https://line.me/R/ti/p/';
 
     public function __construct(
+        private readonly EntitlementService $entitlements,
         private readonly SalonRepository $salonRepository,
         private readonly ReservationRepository $reservationRepository,
         private readonly CustomerRepository $customerRepository,
@@ -61,7 +65,7 @@ class PublicBookingService
      */
     public function findSalon(string $bookingSlug): array
     {
-        $salon = $this->salonRepository->findActiveByBookingSlugOrFail($bookingSlug);
+        $salon = $this->findBookableSalonOrFail($bookingSlug);
 
         return [
             'salon' => $salon,
@@ -76,7 +80,7 @@ class PublicBookingService
      */
     public function listAvailability(string $bookingSlug, array $filters): Collection
     {
-        $salon = $this->salonRepository->findActiveByBookingSlugOrFail($bookingSlug);
+        $salon = $this->findBookableSalonOrFail($bookingSlug);
         $menu = $this->findActiveMenuOrFail($salon->id, (int) $filters['menu_id']);
         $userId = $this->resolveRequestedStaffId($salon->id, $filters);
 
@@ -90,7 +94,7 @@ class PublicBookingService
      */
     public function create(string $bookingSlug, array $data): array
     {
-        $salon = $this->salonRepository->findActiveByBookingSlugOrFail($bookingSlug);
+        $salon = $this->findBookableSalonOrFail($bookingSlug);
         $menu = $this->findActiveMenuOrFail($salon->id, (int) $data['menu_id']);
         $requestedUserId = $this->resolveRequestedStaffId($salon->id, $data);
 
@@ -127,11 +131,12 @@ class PublicBookingService
                 'note' => $data['note'] ?? null,
             ]);
 
-            if ($customer->line_user_id !== null) {
+            if ($customer->line_user_id !== null && $this->entitlements->can($salon->id, Feature::Line)) {
                 SendBookingConfirmationJob::dispatch($reservation->id)->afterCommit();
             }
 
-            if ($salon->google_calendar_mode !== null) {
+            if ($salon->google_calendar_mode !== null
+                && $this->entitlements->can($salon->id, Feature::GoogleCalendar)) {
                 SyncReservationToGoogleJob::dispatch($reservation->id)->afterCommit();
             }
 
@@ -161,11 +166,32 @@ class PublicBookingService
         $reservation = $this->reservationRepository->findByBookingTokenOrFail($bookingToken);
 
         // 一括 UPDATE でモデルイベントが発火しないため、Google イベント削除を明示 dispatch する
-        if ($reservation->salon->google_calendar_mode !== null) {
+        if ($reservation->salon->google_calendar_mode !== null
+            && $this->entitlements->can($reservation->salon_id, Feature::GoogleCalendar)) {
             SyncReservationToGoogleJob::dispatch($reservation->id)->afterCommit();
         }
 
         return $reservation;
+    }
+
+    /**
+     * 予約を受け付けられるサロンだけを返す（ADR-029）。
+     *
+     * 予約機能を含まないプランのサロンは、公開予約ページごと存在しないものとして 404 にする。
+     * 403 にするとスラッグが実在することを外部に知らせてしまうため、is_active と同じ扱いに揃える。
+     * 予約トークンで辿る照会・キャンセルは対象外とし、ダウングレード前に受けた予約は最後まで扱えるようにする。
+     */
+    private function findBookableSalonOrFail(string $bookingSlug): Salon
+    {
+        $salon = $this->salonRepository->findActiveByBookingSlugOrFail($bookingSlug);
+
+        if (! $this->entitlements->can($salon->id, Feature::Reservation)) {
+            // 存在しないスラッグと同じ例外・同じメッセージにする。
+            // 本文が違うとスラッグの実在を総当たりで判別できてしまう。
+            throw (new ModelNotFoundException)->setModel(Salon::class);
+        }
+
+        return $salon;
     }
 
     /**

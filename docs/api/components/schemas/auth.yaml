@@ -65,6 +65,22 @@ LoginResponse:
               enum: [owner, manager, staff]
               example: owner
 
+            plan:
+              description: 契約プラン。契約が無い・失効している場合は null
+              nullable: true
+              allOf:
+                - $ref: "./common.yaml#/SubscriptionPlan"
+
+            subscription_status:
+              description: 契約状態。契約が無い場合は null
+              nullable: true
+              allOf:
+                - $ref: "./common.yaml#/SubscriptionStatus"
+
+            features:
+              description: 利用可能な機能のフラグ。画面の出し分けに使う（遮断はAPIの403が担う）
+              $ref: "./subscription.yaml#/FeatureFlags"
+
 ########################################################
 
 MeResponse:
@@ -104,3 +120,20 @@ MeResponse:
           type: string
           enum: [owner, manager, staff]
           example: owner
+
+        plan:
+          description: 契約プラン。契約が無い・失効している場合は null
+          nullable: true
+          allOf:
+            - $ref: "./common.yaml#/SubscriptionPlan"
+
+        subscription_status:
+          description: 契約状態。契約が無い場合は null
+          nullable: true
+          allOf:
+            - $ref: "./common.yaml#/SubscriptionStatus"
+
+        features:
+          description: 利用可能な機能のフラグ。画面の出し分けに使う（遮断はAPIの403が担う）
+          $ref: "./subscription.yaml#/FeatureFlags"
+

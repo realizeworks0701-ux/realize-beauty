@@ -96,3 +96,8 @@ MVPでは実装しない
 - 在庫管理
 - POS
 - 決済
+
+この一覧は MVP の範囲を記録したものであり、現在の機能一覧ではない。後続フェーズで実装した項目も削除せず残す。
+
+- LINE連携・Web予約は v0.3 の予約フェーズ2で実装済み（[booking.md](booking.md) / [ADR-024](../decisions/ADR-024-line-integration.md)）
+- 決済は v1.0 でサブスクリプション課金として実装済み（[ADR-029](../decisions/ADR-029-subscription-billing.md)）。対象はサロンが Realize Beauty を利用するための月額利用料（Stripe Checkout / カスタマーポータル）であり、**施術代金の決済（POS・キャッシュレス決済）は引き続きスコープ外**とする

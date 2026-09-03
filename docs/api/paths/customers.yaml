@@ -26,6 +26,12 @@ customers:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
 
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
   post:
     tags:
       - Customers
@@ -50,6 +56,12 @@ customers:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー"
         content:
@@ -78,6 +90,12 @@ customer:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "顧客が見つかりません"
         content:
@@ -111,6 +129,12 @@ customer:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "顧客が見つかりません"
         content:
@@ -140,6 +164,12 @@ customer:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "顧客が見つかりません"
         content:

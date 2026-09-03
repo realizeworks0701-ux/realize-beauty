@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\Feature;
 use App\Jobs\ProcessLineEventJob;
 use App\Repositories\LineSettingRepository;
+use App\Services\Billing\EntitlementService;
 use Illuminate\Support\Facades\Log;
 
 class LineWebhookService
@@ -15,6 +17,7 @@ class LineWebhookService
 
     public function __construct(
         private readonly LineSettingRepository $lineSettingRepository,
+        private readonly EntitlementService $entitlements,
     ) {}
 
     /**
@@ -37,6 +40,13 @@ class LineWebhookService
 
         if ($setting === null) {
             Log::warning('LINE webhook: 未知の destination を受信しました。', ['destination' => $destination]);
+
+            return;
+        }
+
+        // プラン対象外のサロン宛は受理だけして何もしない（LINE に再送させないため 200 のまま）
+        if (! $this->entitlements->can($setting->salon_id, Feature::Line)) {
+            Log::info('LINE webhook: プラン対象外のため無視しました。', ['salon_id' => $setting->salon_id]);
 
             return;
         }

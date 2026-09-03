@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Enums\Feature;
 use App\Enums\ReservationStatus;
 use App\Models\GoogleCalendarConnection;
 use App\Models\Reservation;
@@ -159,6 +160,7 @@ class ReservationRepository
             ->where('start_at', '<', $toExclusive)
             ->whereHas('customer', fn ($query) => $query->whereNotNull('line_user_id'))
             ->whereHas('salon.lineSetting', fn ($query) => $query->where('is_active', true))
+            ->whereHas('salon.subscription', fn ($query) => $query->granting(Feature::Line))
             ->orderBy('start_at')
             ->orderBy('id')
             ->get();

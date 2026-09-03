@@ -1,12 +1,33 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ConfirmationService from 'primevue/confirmationservice'
 import ToastService from 'primevue/toastservice'
 import App from './App.vue'
 
+// App は起動時にユーザー情報を取り直すため、認証サービスを差し替える
+vi.mock('@/services/authService', () => ({
+  authService: { me: vi.fn().mockResolvedValue(null), login: vi.fn(), logout: vi.fn() },
+}))
+
 const Blank = { template: '<div />' }
+
+/** jsdom は localStorage を提供しないため、auth ストア用に最小実装を差し込む */
+function memoryStorage(): Storage {
+  const map = new Map<string, string>()
+  return {
+    get length() {
+      return map.size
+    },
+    key: (i: number) => [...map.keys()][i] ?? null,
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    clear: () => map.clear(),
+  }
+}
 
 function buildRouter() {
   return createRouter({
@@ -34,6 +55,11 @@ async function mountAt(path: string) {
 }
 
 describe('App のテーマ切り替え', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    setActivePinia(createPinia())
+  })
+
   afterEach(() => {
     document.documentElement.classList.remove('rb-legacy-theme')
   })

@@ -15,21 +15,17 @@ class RecordSummaryApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeSalonUser(): User
+    /**
+     * ファクトリ経由で作る。サロンには ADR-029 の契約行が必要で、
+     * Salon::create() では付かず AI 要約が 403 になるため。
+     */
+    private function makeSalonUser(?Salon $salon = null): User
     {
-        $salon = Salon::create([
-            'name' => 'テストサロン',
-            'phone' => '03-0000-0000',
-            'postal_code' => '100-0001',
-            'address' => '東京都千代田区',
-        ]);
+        $salon ??= Salon::factory()->create(['name' => 'テストサロン']);
 
-        return User::create([
-            'salon_id' => $salon->id,
+        return User::factory()->for($salon)->create([
             'name' => '山田 太郎',
             'email' => "owner{$salon->id}@example.com",
-            'password' => 'password',
-            'role' => 'owner',
         ]);
     }
 

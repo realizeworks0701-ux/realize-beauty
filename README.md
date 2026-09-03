@@ -52,6 +52,7 @@ RealizeWorksでは以下の5つを開発原則とします。
 - GitHub Actions
 - Cloudflare R2
 - OpenAI API
+- Stripe
 - Laravel Cloud（予定）
 
 ---
@@ -221,6 +222,60 @@ Version 1では以下の機能のみ実装する。
 - 写真管理
 
 MVP完成までは機能追加を行わない。
+
+---
+
+# Subscription
+
+サブスクリプション課金（Stripe）でプランを管理し、プランごとに使える機能を切り替える。
+
+| プラン | 月額（税込） | 使える機能 |
+|---|---|---|
+| Lite | 980円 | 顧客管理 / カルテ管理 / 写真管理 |
+| Standard | 1,980円 | Lite + 予約管理 / Googleカレンダー連携 / LINE連携 |
+| Pro | 3,980円 | Standard + AI要約 / 高度な分析 |
+
+カード情報は Stripe がホストする Checkout 画面で入力され、アプリには一切保存しない。
+
+## Stripe Mode
+
+| 環境 | APP_ENV | Stripe |
+|---|---|---|
+| DEV | local | Test Mode（`sk_test_` / Test Mode の Price ID） |
+| PRODUCTION | production | Live Mode（`sk_live_` / Live Mode の Price ID） |
+
+DEV と本番でキー・Price ID・Webhook Secret をすべて分ける。
+取り違えは決済 API を呼ぶ手前で例外として止まる。
+
+## Local Setup
+
+1. `backend/.env` に Stripe の **Test** キーと **Test Mode** の Price ID を設定する
+
+```
+STRIPE_KEY=pk_test_...
+STRIPE_SECRET=sk_test_...
+STRIPE_PRICE_LITE=price_...
+STRIPE_PRICE_STANDARD=price_...
+STRIPE_PRICE_PRO=price_...
+```
+
+2. 設定と Live/Test の整合を確認する
+
+```
+php artisan stripe:check
+```
+
+3. Webhook を Stripe CLI でローカルへ転送し、表示された `whsec_...` を `STRIPE_WEBHOOK_SECRET` に設定する
+
+```
+stripe listen --forward-to localhost:8000/api/webhooks/stripe
+```
+
+## Documents
+
+- 仕様: [docs/subscription.md](docs/subscription.md)
+- Stripe の設定と運用: [docs/stripe.md](docs/stripe.md)
+- 設計判断: [docs/decisions/ADR-029-subscription-billing.md](docs/decisions/ADR-029-subscription-billing.md)
 
 ---
 

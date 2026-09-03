@@ -24,6 +24,12 @@ lineSettings:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
 
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
   put:
     tags:
       - LineSettings
@@ -55,6 +61,12 @@ lineSettings:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー"
         content:
@@ -80,6 +92,12 @@ lineSettings:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "LINE連携設定が未登録"
         content:
@@ -115,6 +133,12 @@ lineSettingsVerify:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "LINE連携設定が未登録"
         content:
@@ -148,3 +172,10 @@ bookingPage:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"

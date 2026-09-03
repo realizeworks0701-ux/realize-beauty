@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Feature;
 use App\Enums\ReservationStatus;
 use App\Jobs\SyncReservationToGoogleJob;
 use App\Models\Menu;
@@ -10,6 +11,7 @@ use App\Repositories\CustomerRepository;
 use App\Repositories\MenuRepository;
 use App\Repositories\ReservationRepository;
 use App\Repositories\UserRepository;
+use App\Services\Billing\EntitlementService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -21,6 +23,7 @@ class ReservationService
     private const MAX_PERIOD_DAYS = 31;
 
     public function __construct(
+        private readonly EntitlementService $entitlements,
         private readonly ReservationRepository $reservationRepository,
         private readonly CustomerRepository $customerRepository,
         private readonly MenuRepository $menuRepository,
@@ -191,7 +194,8 @@ class ReservationService
      */
     private function dispatchGoogleSync(Reservation $reservation, ?int $previousUserId = null): void
     {
-        if ($reservation->salon->google_calendar_mode === null) {
+        if ($reservation->salon->google_calendar_mode === null
+            || ! $this->entitlements->can($reservation->salon_id, Feature::GoogleCalendar)) {
             return;
         }
 

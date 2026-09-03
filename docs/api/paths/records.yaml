@@ -26,6 +26,12 @@ records:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー"
         content:
@@ -56,6 +62,12 @@ customerRecords:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "顧客が見つかりません"
         content:
@@ -88,6 +100,12 @@ customerRecords:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:
@@ -122,6 +140,12 @@ record:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:
@@ -155,6 +179,12 @@ record:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:
@@ -219,6 +249,12 @@ summarize:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:

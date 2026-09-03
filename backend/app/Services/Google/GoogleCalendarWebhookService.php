@@ -2,8 +2,10 @@
 
 namespace App\Services\Google;
 
+use App\Enums\Feature;
 use App\Jobs\SyncGoogleCalendarJob;
 use App\Repositories\GoogleCalendarConnectionRepository;
+use App\Services\Billing\EntitlementService;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -15,6 +17,7 @@ class GoogleCalendarWebhookService
 {
     public function __construct(
         private readonly GoogleCalendarConnectionRepository $connections,
+        private readonly EntitlementService $entitlements,
     ) {}
 
     public function handle(?string $channelId, ?string $channelToken, ?string $resourceId, ?string $resourceState): void
@@ -46,6 +49,13 @@ class GoogleCalendarWebhookService
         if (! is_string($resourceId) || $connection->channel_resource_id === null
             || ! hash_equals($connection->channel_resource_id, $resourceId)) {
             Log::warning('Google webhook: resourceId が一致しません。', ['connection_id' => $connection->id]);
+
+            return;
+        }
+
+        // 4. プラン対象外（ダウングレード後）は同期しない。チャネルは期限切れで自然に消える
+        if (! $this->entitlements->can($connection->salon_id, Feature::GoogleCalendar)) {
+            Log::info('Google webhook: プラン対象外のため無視しました。', ['salon_id' => $connection->salon_id]);
 
             return;
         }

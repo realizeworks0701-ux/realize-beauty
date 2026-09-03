@@ -2,8 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Enums\Feature;
 use App\Enums\GoogleCalendarConnectionStatus;
 use App\Repositories\GoogleCalendarConnectionRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Google\GoogleApiException;
 use App\Services\Google\GoogleAuthException;
 use App\Services\Google\GoogleCalendarSyncService;
@@ -46,11 +48,14 @@ class SyncGoogleCalendarJob implements ShouldBeUniqueUntilProcessing, ShouldQueu
     public function handle(
         GoogleCalendarConnectionRepository $connectionRepository,
         GoogleCalendarSyncService $syncService,
+        EntitlementService $entitlements,
     ): void {
         $connection = $connectionRepository->find($this->connectionId);
 
-        // 解除済み・要再接続はスキップ（needs_reconnect の同期はリトライせず打ち切る）
-        if ($connection === null || $connection->status === GoogleCalendarConnectionStatus::NeedsReconnect) {
+        // 解除済み・要再接続・プラン対象外はスキップ（needs_reconnect の同期はリトライせず打ち切る）
+        if ($connection === null
+            || $connection->status === GoogleCalendarConnectionStatus::NeedsReconnect
+            || ! $entitlements->can($connection->salon_id, Feature::GoogleCalendar)) {
             return;
         }
 

@@ -21,5 +21,8 @@
 | 17 | Public Booking Cancel   | /booking/cancel/:token        |
 | 18 | Google Calendar Settings| /settings/google-calendar     |
 | 19 | Record List (Salon)     | /records                      |
+| 20 | Plan Settings           | /settings/plan                |
+| 21 | Feature Locked          | /plan-required/:feature       |
 
 * No 16・17 は**認証なしでアクセスできる公開ページ**（顧客向け）。認証ガード対象外の公開ルートとし、PublicLayout（サイドバーなし・モバイルファースト）を使用する（[public-booking.md](public-booking.md)）
+* No 20・21 は契約プラン（[ADR-029](../decisions/ADR-029-subscription-billing.md)）に関する画面。No 20 は**未契約でも開ける唯一の業務画面**とし、プラン制限の対象外にする（[settings-plan.md](settings-plan.md)）。No 21 は契約プランに含まれない機能へアクセスしたときの振り替え先（[plan-required.md](plan-required.md)）

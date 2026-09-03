@@ -7,6 +7,7 @@ import ConfirmationService from 'primevue/confirmationservice'
 import ToastService from 'primevue/toastservice'
 import type { GoogleCalendarSettings, StaffUser } from '@/types'
 import { useAuthStore } from '@/stores/auth'
+import { buildTestUser } from '@/test-support/user'
 import GoogleCalendarSettingsPage from './GoogleCalendarSettingsPage.vue'
 
 const settingsMock = vi.hoisted(() => vi.fn())
@@ -66,7 +67,7 @@ describe('GoogleCalendarSettingsPage', () => {
     vi.clearAllMocks()
     vi.stubGlobal('localStorage', memoryStorage())
     setActivePinia(createPinia())
-    useAuthStore().user = { id: 1, name: '山田 太郎', email: 'owner@example.com', role: 'owner' }
+    useAuthStore().user = buildTestUser()
   })
 
   it('モード未設定では接続カードを出さず、接続単位の選択を促す', async () => {

@@ -14,6 +14,7 @@ use App\Models\Salon;
 use App\Models\User;
 use App\Repositories\GoogleCalendarConnectionRepository;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Google\GoogleApiException;
 use App\Services\Google\GoogleCalendarSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -446,6 +447,7 @@ class GoogleCalendarSyncTest extends TestCase
         (new SyncGoogleCalendarJob($connection->id))->handle(
             app(GoogleCalendarConnectionRepository::class),
             app(GoogleCalendarSyncService::class),
+            app(EntitlementService::class),
         );
 
         Http::assertNothingSent();

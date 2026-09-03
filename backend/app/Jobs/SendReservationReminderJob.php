@@ -2,8 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Enums\Feature;
 use App\Enums\ReservationStatus;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Line\LineApiException;
 use App\Services\Line\LineClient;
 use App\Services\Line\LineMessages;
@@ -40,6 +42,7 @@ class SendReservationReminderJob implements ShouldBeUnique, ShouldQueue
     public function handle(
         ReservationRepository $reservationRepository,
         LineClient $lineClient,
+        EntitlementService $entitlements,
     ): void {
         $reservation = $reservationRepository->findWithLineContext($this->reservationId);
 
@@ -48,7 +51,8 @@ class SendReservationReminderJob implements ShouldBeUnique, ShouldQueue
             || $reservation->status !== ReservationStatus::Reserved
             || $reservation->reminder_sent_at !== null
             || $reservation->customer?->line_user_id === null
-            || $reservation->salon->lineSetting?->is_active !== true) {
+            || $reservation->salon->lineSetting?->is_active !== true
+            || ! $entitlements->can($reservation->salon_id, Feature::Line)) {
             return;
         }
 

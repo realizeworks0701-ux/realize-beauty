@@ -10,9 +10,11 @@ import GlassCard from '@/components/common/GlassCard.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useFeatures } from '@/composables/useFeatures'
 import type { UserRole } from '@/types'
 
 const auth = useAuthStore()
+const { can, planLabel } = useFeatures()
 const router = useRouter()
 const toast = useToast()
 const confirm = useConfirm()
@@ -111,7 +113,21 @@ function confirmLogout(): void {
 
       <GlassCard title="サロン設定" icon="pi pi-shop">
         <div class="salon-links">
-          <RouterLink to="/settings/menus" class="salon-link">
+          <RouterLink to="/settings/plan" class="salon-link">
+            <span class="salon-link-icon"><i class="pi pi-credit-card" /></span>
+            <span class="salon-link-body">
+              <span class="salon-link-title">プラン・お支払い</span>
+              <span class="salon-link-description">
+                {{
+                  planLabel
+                    ? `ご契約中: ${planLabel}プラン`
+                    : 'ご契約プランの確認・変更・お支払い情報'
+                }}
+              </span>
+            </span>
+            <i class="pi pi-angle-right salon-link-arrow" />
+          </RouterLink>
+          <RouterLink v-if="can('reservation')" to="/settings/menus" class="salon-link">
             <span class="salon-link-icon"><i class="pi pi-list" /></span>
             <span class="salon-link-body">
               <span class="salon-link-title">メニュー管理</span>
@@ -127,7 +143,7 @@ function confirmLogout(): void {
             </span>
             <i class="pi pi-angle-right salon-link-arrow" />
           </RouterLink>
-          <RouterLink to="/settings/line" class="salon-link">
+          <RouterLink v-if="can('line')" to="/settings/line" class="salon-link">
             <span class="salon-link-icon"><i class="pi pi-comments" /></span>
             <span class="salon-link-body">
               <span class="salon-link-title">LINE連携</span>
@@ -135,7 +151,11 @@ function confirmLogout(): void {
             </span>
             <i class="pi pi-angle-right salon-link-arrow" />
           </RouterLink>
-          <RouterLink to="/settings/google-calendar" class="salon-link">
+          <RouterLink
+            v-if="can('google_calendar')"
+            to="/settings/google-calendar"
+            class="salon-link"
+          >
             <span class="salon-link-icon"><i class="pi pi-calendar" /></span>
             <span class="salon-link-body">
               <span class="salon-link-title">Googleカレンダー連携</span>

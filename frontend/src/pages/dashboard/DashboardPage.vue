@@ -5,6 +5,8 @@ import GlassCard from '@/components/common/GlassCard.vue'
 import KpiCard from '@/components/common/KpiCard.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import FeatureUpsell from '@/components/common/FeatureUpsell.vue'
+import { useFeatures } from '@/composables/useFeatures'
 import SalesTrendChart from '@/components/dashboard/SalesTrendChart.vue'
 import TodayReservationList from '@/components/dashboard/TodayReservationList.vue'
 import PopularMenuList from '@/components/dashboard/PopularMenuList.vue'
@@ -14,6 +16,8 @@ import { dashboardService } from '@/services/dashboardService'
 import { calcDeltaPercent } from '@/utils/format'
 import { extractErrorMessage } from '@/utils/apiError'
 import type { DashboardSummary } from '@/types'
+
+const { can } = useFeatures()
 
 const toast = useToast()
 const summary = ref<DashboardSummary | null>(null)
@@ -98,11 +102,12 @@ onMounted(async () => {
     <div class="dash-grid">
       <GlassCard title="売上推移" icon="pi pi-chart-line">
         <Skeleton v-if="loading" height="260px" border-radius="14px" />
-        <SalesTrendChart v-else-if="summary" :trend="summary.sales_trend" />
+        <SalesTrendChart v-else-if="summary?.sales_trend" :trend="summary.sales_trend" />
+        <FeatureUpsell v-else-if="summary" feature="analytics" compact />
       </GlassCard>
 
       <GlassCard title="本日の来店予約" icon="pi pi-calendar-clock">
-        <template #actions>
+        <template v-if="can('reservation')" #actions>
           <RouterLink to="/reservations" class="card-link">すべて見る</RouterLink>
         </template>
         <div v-if="loading" class="skeleton-list">
@@ -124,8 +129,13 @@ onMounted(async () => {
         <div v-if="loading" class="skeleton-list">
           <Skeleton v-for="n in 3" :key="n" height="52px" border-radius="14px" />
         </div>
+        <FeatureUpsell
+          v-else-if="summary && summary.popular_menus === null"
+          feature="analytics"
+          compact
+        />
         <PopularMenuList
-          v-else-if="summary && summary.popular_menus.length > 0"
+          v-else-if="summary?.popular_menus && summary.popular_menus.length > 0"
           :menus="summary.popular_menus"
         />
         <EmptyState
@@ -138,7 +148,11 @@ onMounted(async () => {
 
       <GlassCard title="顧客セグメント" icon="pi pi-users">
         <Skeleton v-if="loading" height="96px" border-radius="14px" />
-        <CustomerSegmentList v-else-if="summary" :segments="summary.customer_segments" />
+        <CustomerSegmentList
+          v-else-if="summary?.customer_segments"
+          :segments="summary.customer_segments"
+        />
+        <FeatureUpsell v-else-if="summary" feature="analytics" compact />
       </GlassCard>
     </div>
   </div>

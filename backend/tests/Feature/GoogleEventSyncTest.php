@@ -12,6 +12,7 @@ use App\Models\Reservation;
 use App\Models\Salon;
 use App\Models\User;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Google\GoogleEventSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -372,6 +373,10 @@ class GoogleEventSyncTest extends TestCase
     private function runSync(int $reservationId, ?int $previousUserId = null, ?string $previousCalendarId = null): void
     {
         (new SyncReservationToGoogleJob($reservationId, $previousUserId, $previousCalendarId))
-            ->handle(app(ReservationRepository::class), app(GoogleEventSyncService::class));
+            ->handle(
+                app(ReservationRepository::class),
+                app(GoogleEventSyncService::class),
+                app(EntitlementService::class),
+            );
     }
 }

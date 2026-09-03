@@ -25,6 +25,12 @@ googleCalendar:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
 
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
 googleCalendarBusyBlocks:
   get:
     tags:
@@ -61,6 +67,12 @@ googleCalendarBusyBlocks:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー（to が from より前 / 期間が31日を超える / 日付形式不正）"
         content:
@@ -110,6 +122,12 @@ googleCalendarMode:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー（mode が per_staff / shared 以外）"
         content:
@@ -151,6 +169,12 @@ googleCalendarAuthUrl:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "モードが未設定（先に PUT /google-calendar/mode が必要）"
         content:
@@ -278,6 +302,12 @@ googleCalendarConnectionCalendars:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "自サロンかつ操作権限のある接続が存在しない"
         content:
@@ -348,6 +378,12 @@ googleCalendarConnection:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "自サロンかつ操作権限のある接続が存在しない"
         content:
@@ -399,6 +435,12 @@ googleCalendarConnection:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "自サロンかつ操作権限のある接続が存在しない"
         content:

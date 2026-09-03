@@ -1,0 +1,279 @@
+# サブスクリプション契約（ADR-029）。
+# 契約の確認・開始・変更・解約はプラン制限の対象外（feature ミドルウェアを付けない）。
+# 未契約でも必ず開ける導線でなければ、契約を始められなくなるため。
+
+subscription:
+  get:
+    tags:
+      - Subscription
+    summary: 契約情報取得
+    description: >
+      プラン設定画面が必要とする情報（現在の契約・有効なプラン・機能フラグ・プランカタログ）を1回で返す。
+      契約行が無い、または契約が失効している場合は subscription と plan が null となり、
+      features はすべて false になる（既定プランによる救済は行わない）。
+    operationId: getSubscription
+    responses:
+      '200':
+        description: "契約情報取得成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/SubscriptionOverviewResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+
+subscriptionCheckout:
+  post:
+    tags:
+      - Subscription
+    summary: 契約開始（Checkout セッション作成）
+    description: >
+      Stripe Checkout のセッションを作成し、リダイレクト先URLを返す。
+      カード番号・CVC・有効期限は Stripe がホストする画面で入力され、Laravel には一切到達しない。
+      受け取るのは plan key のみで、Price ID はサーバが config/billing.php から引く。
+      既存の stripe_customer_id があれば再利用する（1サロン1 Customer）。
+      戻り先は `{FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=success&session_id={CHECKOUT_SESSION_ID}`
+      および `?checkout=cancel`。契約内容の反映は戻り先ではなく Stripe Webhook 経由でのみ行う。
+      すでに契約中の場合は 422（プラン変更を使う）。
+    operationId: createSubscriptionCheckout
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/subscription.yaml#/PlanRequest"
+    responses:
+      '200':
+        description: "Checkout セッション作成成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/CheckoutUrlResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "バリデーションエラー（すでに契約中・不正なプラン）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+subscriptionPortal:
+  post:
+    tags:
+      - Subscription
+    summary: お支払い方法の管理（Customer Portal セッション作成）
+    description: >
+      Stripe カスタマーポータルのセッションを作成し、リダイレクト先URLを返す。
+      支払い方法の変更・請求履歴の確認は Stripe の画面で行い、アプリでは扱わない。
+      Stripe Customer が未作成（has_payment_method=false）の場合は 422。
+    operationId: createSubscriptionPortal
+    responses:
+      '200':
+        description: "カスタマーポータルセッション作成成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/CheckoutUrlResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "バリデーションエラー（お支払い情報が未登録）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+subscriptionChangePlan:
+  post:
+    tags:
+      - Subscription
+    summary: プラン変更
+    description: >
+      Stripe の subscription item の price を差し替える
+      （`proration_behavior: create_prorations` / `payment_behavior: error_if_incomplete`）。
+      即時反映・日割り精算は Stripe に委ね、アプリ側で請求金額を計算することはしない。
+      ダウングレードの差額は次回請求へクレジットとして繰り越される。
+      ダウングレードしても顧客・カルテ・写真は削除せず、LINE・Google の連携情報も保持する
+      （能動的な teardown は行わない）。
+      契約が無い場合、または現在と同じプランを指定した場合は 422。
+    operationId: changeSubscriptionPlan
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/subscription.yaml#/PlanRequest"
+    responses:
+      '200':
+        description: "プラン変更成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/SubscriptionResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "バリデーションエラー（契約なし・同一プラン・不正なプラン）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+subscriptionCancel:
+  post:
+    tags:
+      - Subscription
+    summary: 解約申請
+    description: >
+      Stripe の cancel_at_period_end を true にする。即時停止はしない。
+      期間終了時に Stripe が status を canceled にし、Webhook 経由で利用停止となる。
+      解約しても顧客・カルテ・写真は一切削除しない。
+      すでに解約を申請済みの場合、または契約が無い場合は 422。
+    operationId: cancelSubscription
+    responses:
+      '200':
+        description: "解約申請成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/SubscriptionResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "バリデーションエラー（契約なし・すでに解約申請済み）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+subscriptionResume:
+  post:
+    tags:
+      - Subscription
+    summary: 解約申請の取り消し
+    description: >
+      Stripe の cancel_at_period_end を false に戻して契約を継続する。
+      解約が申請されていない場合、または契約が無い場合は 422。
+    operationId: resumeSubscription
+    responses:
+      '200':
+        description: "解約申請の取り消し成功"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/SubscriptionResponse"
+      '401':
+        description: "認証エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "バリデーションエラー（契約なし・解約未申請）"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/ValidationError"
+
+subscriptionSyncCheckout:
+  post:
+    tags:
+      - Subscription
+    summary: Checkout の結果を取り込む
+    description: >
+      Checkout から戻った直後に、その結果を Stripe から取り直して反映する。
+      Webhook の到着を待つ間はアプリDBが「未契約」のままになり、
+      そこで2本目を契約されると二重課金になるため、この窓を閉じる。
+      session_id は戻り先URL経由で渡ってくるので、自サロンのセッションかを必ず確認する。
+    operationId: syncCheckoutSession
+
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - session_id
+            properties:
+              session_id:
+                type: string
+                description: Checkout セッションID（success_url の session_id）
+                example: cs_test_a1B2c3D4
+
+    responses:
+      '200':
+        description: "取り込み後の契約状態。対象が見つからない場合は data が null"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/subscription.yaml#/SubscriptionResponse"
+      '401':
+        description: "未認証"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約とお支払いを操作する権限がありません（owner / manager のみ）。または他サロンのセッション"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/responses.yaml#/Forbidden"
+      '422':
+        description: "入力エラー"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/ValidationError"

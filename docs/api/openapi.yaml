@@ -38,12 +38,16 @@ tags:
     description: Web予約ページ設定
   - name: GoogleCalendar
     description: Googleカレンダー連携設定
+  - name: Subscription
+    description: サブスクリプション契約・プラン
   - name: PublicBooking
     description: 公開Web予約（認証なし・/api/public/v1）
   - name: LineWebhook
     description: LINE Webhook（/api/line/webhook）
   - name: GoogleCalendarWebhook
     description: Googleカレンダー Webhook（/api/google/calendar/webhook）
+  - name: StripeWebhook
+    description: Stripe Webhook（/api/webhooks/stripe）
 
 security:
   - bearerAuth: []
@@ -138,6 +142,30 @@ paths:
   /google-calendar/connections/{id}:
     $ref: "./paths/google-calendar.yaml#/googleCalendarConnection"
 
+  # --- サブスクリプション契約 ---
+  # 契約の確認・開始・変更・解約はプラン制限の対象外（未契約でも必ず開ける）。
+
+  /subscription:
+    $ref: "./paths/subscription.yaml#/subscription"
+
+  /subscription/checkout:
+    $ref: "./paths/subscription.yaml#/subscriptionCheckout"
+
+  /subscription/sync-checkout:
+    $ref: "./paths/subscription.yaml#/subscriptionSyncCheckout"
+
+  /subscription/portal:
+    $ref: "./paths/subscription.yaml#/subscriptionPortal"
+
+  /subscription/change-plan:
+    $ref: "./paths/subscription.yaml#/subscriptionChangePlan"
+
+  /subscription/cancel:
+    $ref: "./paths/subscription.yaml#/subscriptionCancel"
+
+  /subscription/resume:
+    $ref: "./paths/subscription.yaml#/subscriptionResume"
+
   # --- 公開Web予約API ---
   # prefix は /api/public/v1（認証なし・throttle あり）。
   # 各 path item 側の servers がルートの servers（/api/v1）を上書きする。
@@ -170,6 +198,14 @@ paths:
 
   /google/calendar/webhook:
     $ref: "./paths/google-calendar-webhook.yaml#/googleCalendarWebhook"
+
+  # --- Stripe Webhook ---
+  # prefix は /api（認証なし・throttle なし・Stripe-Signature の HMAC 検証あり）。
+  # 署名検証失敗は 400（LINE / Google の「常に200」とは異なる）。
+  # path item 側の servers がルートの servers（/api/v1）を上書きする。
+
+  /webhooks/stripe:
+    $ref: "./paths/stripe-webhook.yaml#/stripeWebhook"
 
 components:
 

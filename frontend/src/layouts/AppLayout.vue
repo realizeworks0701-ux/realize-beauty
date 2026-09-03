@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import Avatar from 'primevue/avatar'
 import Button from 'primevue/button'
 import Drawer from 'primevue/drawer'
 import { useAuthStore } from '@/stores/auth'
+import { useFeatures } from '@/composables/useFeatures'
+import type { FeatureKey } from '@/types'
 
 const router = useRouter()
 const confirm = useConfirm()
 const auth = useAuthStore()
+const { can } = useFeatures()
 
 const route = useRoute()
 const menuOpen = ref(false)
@@ -21,13 +24,17 @@ watch(
   },
 )
 
-const navItems = [
+/** feature を持つ項目は、契約プランに含まれるときだけ表示する（ADR-029） */
+const NAV_ITEMS: { label: string; icon: string; to: string; feature?: FeatureKey }[] = [
   { label: 'ダッシュボード', icon: 'pi pi-home', to: '/dashboard' },
-  { label: '顧客', icon: 'pi pi-users', to: '/customers' },
-  { label: 'カルテ', icon: 'pi pi-file-edit', to: '/records' },
-  { label: '予約', icon: 'pi pi-calendar', to: '/reservations' },
+  { label: '顧客', icon: 'pi pi-users', to: '/customers', feature: 'customer' },
+  { label: 'カルテ', icon: 'pi pi-file-edit', to: '/records', feature: 'medical_record' },
+  { label: '予約', icon: 'pi pi-calendar', to: '/reservations', feature: 'reservation' },
   { label: '設定', icon: 'pi pi-cog', to: '/settings' },
 ]
+
+// 配列はPC用サイドバーとモバイル用Drawerの2箇所で描画するため、絞り込みはテンプレートではなくここで行う
+const navItems = computed(() => NAV_ITEMS.filter((item) => !item.feature || can(item.feature)))
 
 function confirmLogout(): void {
   confirm.require({

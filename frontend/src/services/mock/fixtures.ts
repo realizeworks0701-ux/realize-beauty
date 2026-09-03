@@ -1,10 +1,15 @@
 import type {
   BusinessHour,
   Customer,
+  FeatureFlags,
+  FeatureKey,
   Menu,
   Photo,
+  PlanCatalogItem,
+  PlanCode,
   Reservation,
   StaffUser,
+  Subscription,
   TreatmentRecord,
   User,
 } from '@/types'
@@ -18,11 +23,90 @@ import { toIsoWithOffset } from '@/utils/format'
 export const MOCK_BOOKING_SLUG = 'rbmocksalon00001'
 export const MOCK_SALON_NAME = 'Realize Beauty 表参道'
 
+/** モックの初期プラン。dev:mock 中に mockAdapter が書き換える */
+export const MOCK_INITIAL_PLAN: PlanCode = 'pro'
+
+export const buildMockFeatures = (plan: PlanCode | null): FeatureFlags => {
+  const enabled = plan ? MOCK_PLAN_FEATURES[plan] : []
+  return Object.fromEntries(
+    MOCK_FEATURE_KEYS.map((key) => [key, enabled.includes(key)]),
+  ) as FeatureFlags
+}
+
+const MOCK_FEATURE_KEYS: FeatureKey[] = [
+  'customer',
+  'medical_record',
+  'photo',
+  'reservation',
+  'google_calendar',
+  'line',
+  'ai_summary',
+  'analytics',
+]
+
+export const MOCK_PLAN_FEATURES: Record<PlanCode, FeatureKey[]> = {
+  lite: ['customer', 'medical_record', 'photo'],
+  standard: ['customer', 'medical_record', 'photo', 'reservation', 'google_calendar', 'line'],
+  pro: MOCK_FEATURE_KEYS,
+}
+
+export const MOCK_PLAN_CATALOG: PlanCatalogItem[] = [
+  {
+    code: 'lite',
+    label: 'Lite',
+    monthly_price: 980,
+    features: MOCK_PLAN_FEATURES.lite,
+    is_purchasable: true,
+  },
+  {
+    code: 'standard',
+    label: 'Standard',
+    monthly_price: 1980,
+    features: MOCK_PLAN_FEATURES.standard,
+    is_purchasable: true,
+  },
+  {
+    code: 'pro',
+    label: 'Pro',
+    monthly_price: 3980,
+    features: MOCK_PLAN_FEATURES.pro,
+    is_purchasable: true,
+  },
+]
+
+export const buildMockSubscription = (plan: PlanCode): Subscription => {
+  const catalog = MOCK_PLAN_CATALOG.find((item) => item.code === plan)
+  const now = new Date()
+  const periodEnd = new Date(now)
+  periodEnd.setMonth(periodEnd.getMonth() + 1)
+
+  return {
+    plan,
+    plan_label: catalog?.label ?? plan,
+    monthly_price: catalog?.monthly_price ?? 0,
+    status: 'active',
+    status_label: '利用中',
+    is_active: true,
+    needs_payment_attention: false,
+    cancel_at_period_end: false,
+    current_period_start: now.toISOString(),
+    current_period_end: periodEnd.toISOString(),
+    canceled_at: null,
+    ended_at: null,
+    trial_ends_at: null,
+    has_payment_method: true,
+    is_subscribed: true,
+  }
+}
+
 export const mockUser: User = {
   id: 1,
   name: '山田 太郎',
   email: 'owner@example.com',
   role: 'owner',
+  plan: MOCK_INITIAL_PLAN,
+  subscription_status: 'active',
+  features: buildMockFeatures(MOCK_INITIAL_PLAN),
 }
 
 export const mockCustomers: Customer[] = [

@@ -3,7 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Enums\Role;
+use App\Enums\SubscriptionPlan;
+use App\Enums\SubscriptionStatus;
 use App\Models\Salon;
+use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Hash;
@@ -18,7 +21,8 @@ class CreateSalonOwner extends Command
         {--postal-code= : サロンの郵便番号}
         {--address= : サロンの住所}
         {--name= : オーナーの氏名}
-        {--email= : ログイン用メールアドレス}';
+        {--email= : ログイン用メールアドレス}
+        {--plan=lite : 初期プラン（lite/standard/pro）。Checkout 完了後は Stripe 側の内容で上書きされる}';
 
     protected $description = '初期オーナーユーザーを作成する（パスワードは対話入力。本番の初期投入用）';
 
@@ -82,6 +86,14 @@ class CreateSalonOwner extends Command
             return self::FAILURE;
         }
 
+        $plan = SubscriptionPlan::tryFrom((string) $this->option('plan'));
+
+        if ($plan === null) {
+            $this->error('--plan には lite / standard / pro のいずれかを指定してください。');
+
+            return self::FAILURE;
+        }
+
         $existing = Salon::where('name', $input['salon'])->first();
         if ($existing) {
             $this->warn("同名のサロンが既にあるため再利用する（salon_id={$existing->id}）。電話番号・住所は既存の値のまま。");
@@ -97,6 +109,13 @@ class CreateSalonOwner extends Command
             ],
         );
 
+        // 契約が無いサロンは全機能が 403 になるため、プロビジョニング時点で契約行を用意する（ADR-029）。
+        // Stripe とはまだ紐づかない。Checkout 完了時に webhook が stripe_* とプランを上書きする。
+        $subscription = Subscription::firstOrCreate(
+            ['salon_id' => $salon->id],
+            ['plan' => $plan, 'status' => SubscriptionStatus::Active],
+        );
+
         $user = User::create([
             'salon_id' => $salon->id,
             'name' => $input['name'],
@@ -107,6 +126,7 @@ class CreateSalonOwner extends Command
         ]);
 
         $this->info("オーナーユーザーを作成しました（salon_id={$salon->id}, user_id={$user->id}）。");
+        $this->info("契約プラン: {$subscription->plan->label()}（{$subscription->status->label()}）。");
 
         return self::SUCCESS;
     }

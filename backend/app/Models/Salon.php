@@ -83,6 +83,16 @@ class Salon extends Model
         return $this->hasOne(LineSetting::class);
     }
 
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(Subscription::class);
+    }
+
+    public function subscriptionEvents(): HasMany
+    {
+        return $this->hasMany(SubscriptionEvent::class);
+    }
+
     public function googleCalendarConnections(): HasMany
     {
         return $this->hasMany(GoogleCalendarConnection::class);

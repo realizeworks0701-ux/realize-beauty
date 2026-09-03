@@ -120,7 +120,11 @@
 
 ## SaaS
 
+> サブスクリプション課金は完了: [ADR-029](../decisions/ADR-029-subscription-billing.md)
+> Stripe Checkout / カスタマーポータルによる契約と、プラン（Lite / Standard / Pro）別の機能制御
+> プラン内容の管理画面・トライアル・年額プランは backlog へ
+
 - [ ] マルチテナント
-- [ ] サブスクリプション
+- [x] サブスクリプション
 - [ ] 管理画面
 - [ ] テナント管理

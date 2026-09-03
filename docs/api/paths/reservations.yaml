@@ -27,6 +27,12 @@ reservations:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー"
         content:
@@ -62,6 +68,12 @@ reservations:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '422':
         description: "バリデーションエラー（ダブルブッキング含む）"
         content:
@@ -90,6 +102,12 @@ reservation:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:
@@ -127,6 +145,12 @@ reservation:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:
@@ -157,6 +181,12 @@ reservation:
           application/json:
             schema:
               $ref: "../components/responses.yaml#/Unauthorized"
+      '403':
+        description: "契約プランに含まれない機能"
+        content:
+          application/json:
+            schema:
+              $ref: "../components/schemas/common.yaml#/FeatureRequiredResponse"
       '404':
         description: "リソースが見つかりません"
         content:

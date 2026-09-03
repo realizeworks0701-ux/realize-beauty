@@ -9,7 +9,7 @@
 | Response Format | JSON |
 | API Style | RESTful |
 
-> 上記は管理側APIの共通情報。フェーズ2で追加した公開Web予約API（`/api/public/v1`・認証なし）と LINE Webhook（`/api/line/webhook`）、フェーズ3で追加した Googleカレンダー Webhook（`/api/google/calendar/webhook`・認証なし）は後述の各セクションを参照。
+> 上記は管理側APIの共通情報。フェーズ2で追加した公開Web予約API（`/api/public/v1`・認証なし）と LINE Webhook（`/api/line/webhook`）、フェーズ3で追加した Googleカレンダー Webhook（`/api/google/calendar/webhook`・認証なし）、サブスクリプション課金で追加した Stripe Webhook（`/api/webhooks/stripe`・認証なし）は後述の各セクションを参照。
 > Googleカレンダー連携のうち `GET /google-calendar/callback` のみ、`/api/v1` 配下だが認証なし（Google からのブラウザリダイレクトのため）。
 
 ---
@@ -25,6 +25,45 @@
 | staff | 一般スタッフ |
 
 > MVPでは全ロール同一権限とし、将来的にRole Middlewareを導入する。
+
+---
+
+# Plan / Feature 制限
+
+契約プランに含まれない機能のエンドポイントは 403（Feature Required）で遮断する（[ADR-029](../decisions/ADR-029-subscription-billing.md) 参照）。判定は認証の内側で行うため、未認証の場合は 401 が優先する。
+
+## Plans
+
+| プラン | 月額（税込・円） | 利用できる機能 |
+|--------|------------------|----------------|
+| Lite | 980 | 顧客管理 / カルテ管理 / 写真管理 |
+| Standard | 1,980 | Lite の全機能 + 予約管理 / Googleカレンダー連携 / LINE連携 |
+| Pro | 3,980 | Standard の全機能 + AI要約 / 高度な分析 |
+
+## Features
+
+| 機能キー | 機能名 | 対象エンドポイント | 必要プラン |
+|----------|--------|--------------------|------------|
+| customer | 顧客管理 | `/customers` 系すべて | Lite |
+| medical_record | カルテ管理 | `/records` 系・`/customers/{customer}/records` 系 | Lite |
+| photo | 写真管理 | `POST /records/{record}/photos`・`DELETE /photos/{id}` | Lite |
+| reservation | 予約管理 | `/menus` 系・`/reservations` 系・`GET /booking-page`・公開Web予約の booking_slug 経路 | Standard |
+| line | LINE連携 | `/line-settings` 系すべて | Standard |
+| google_calendar | Googleカレンダー連携 | `/google-calendar` 系すべて（認証なしの `GET /google-calendar/callback` を除く） | Standard |
+| ai_summary | AI要約 | `POST /records/{record}/summarize`（カルテ管理と両方が必要） | Pro |
+| analytics | 高度な分析 | `GET /dashboard` の sales_trend / popular_menus / customer_segments（403 ではなく null を返す） | Pro |
+
+### Notes
+
+- プラン→機能の対応表は backend の `config/billing.php` を単一の正とする（プラン名で分岐する判定はコードに書かない）
+- **制限しないエンドポイント**: `/auth` 系・`GET /dashboard`（本体）・`/business-hours`（営業時間はサロンの基本情報として全プランで編集できる）・`GET /users`・`/subscription` 系すべて・公開Web予約の booking_token 経路（`GET /bookings/{booking_token}` / `POST /bookings/{booking_token}/cancel`）
+- 契約が無い、または契約状態が利用を許さないサロンは**プランなし＝全機能 403**（fail closed）。既定プランによる救済はしない
+- 利用できるのは契約状態が trialing / active / past_due のいずれかの場合のみ。past_due（支払い失敗〜Stripe の自動再試行中）では止めず、回収フローが尽きて unpaid になった時点で 403 になる。解約申請中（cancel_at_period_end=true）は Stripe 上 active のままのため期間終了まで利用できる
+- `POST /auth/login` / `GET /auth/me` が返す `features` は画面の出し分けのための情報であり、遮断は常にサーバ側の 403 が担う
+- 例外1: 公開Web予約の booking_slug 経路は 403 ではなく **404** を返す（スラッグの実在を外部に知らせないため。後述の「Public Booking（公開Web予約）」参照）
+- 例外2: LINE Webhook / Googleカレンダー Webhook はプラン対象外のサロン宛でもログのみで **200** を返す（非 2xx を返すと外部が再送を繰り返し、最終的にエンドポイントを無効化するため）
+- 例外3: `GET /dashboard` は全プランで開ける。analytics を含まないプランでは該当3キーが null になるだけで 403 にはしない
+- ダウングレード・解約でデータは削除しない。顧客・カルテ・写真に加えて LINE連携情報・Googleカレンダー接続も保持し、再契約時にそのまま復帰できる
 
 ---
 
@@ -59,11 +98,29 @@
     "user": {
       "id": 1,
       "name": "山田 太郎",
-      "role": "owner"
+      "email": "owner@example.com",
+      "role": "owner",
+      "plan": "standard",
+      "subscription_status": "active",
+      "features": {
+        "customer": true,
+        "medical_record": true,
+        "photo": true,
+        "reservation": true,
+        "google_calendar": true,
+        "line": true,
+        "ai_summary": false,
+        "analytics": false
+      }
     }
   }
 }
 ```
+
+### Notes
+
+- `user` は `GET /auth/me` と同形式
+- `plan` / `subscription_status` / `features` は契約プランに応じた画面の出し分けのために返す（前述の「Plan / Feature 制限」参照）
 
 ---
 
@@ -107,10 +164,29 @@
     "id": 1,
     "name": "山田 太郎",
     "email": "sample@example.com",
-    "role": "owner"
+    "role": "owner",
+    "plan": "standard",
+    "subscription_status": "active",
+    "features": {
+      "customer": true,
+      "medical_record": true,
+      "photo": true,
+      "reservation": true,
+      "google_calendar": true,
+      "line": true,
+      "ai_summary": false,
+      "analytics": false
+    }
   }
 }
 ```
+
+### Notes
+
+- `plan` は現在有効なプラン。契約が無い、または契約状態が利用を許さない場合は null（`features` も全 false）
+- `subscription_status` は契約状態（trialing / active / past_due / canceled / unpaid / incomplete / incomplete_expired / paused）。契約行が無い場合は null
+- `features` は全機能キーを漏れなく列挙する。SPA はこれでメニュー・ボタンを出し分けるが、遮断そのものはサーバ側の 403 が担う（前述の「Plan / Feature 制限」参照）
+- 契約状態の詳細・プランカタログは `GET /subscription` を使う
 
 ---
 
@@ -161,10 +237,15 @@
 - `today_reservations` は当日の予約（status reserved / visited、start_at 昇順）。要素は Reservation と同形
 - `popular_menus` は当月の visited 予約のメニュー別件数上位5件（price は現在のメニュー価格）
 - `customer_segments` は来店歴のある顧客の分類。判定順: dormant（最終来店から90日超）→ new（初来店が当月）→ repeat（来店2回以上）→ other
+- ダッシュボード本体は**全プランで利用できる**（プラン制限の対象外。403 にはしない）
+- **高度な分析（analytics）を含まないプランでは `sales_trend` / `popular_menus` / `customer_segments` が null になる**。キー自体は残し、レスポンスの形は変えない（前述の「Plan / Feature 制限」参照）
+- フロントは該当キーが null のとき、そのカードの代わりにアップグレード導線を表示する
 
 ---
 
 # Customers
+
+本グループのエンドポイントは、契約プランに**顧客管理**（`customer`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。
 
 ## GET /customers
 
@@ -284,6 +365,8 @@
 
 # Records
 
+本グループのエンドポイントは、契約プランに**カルテ管理**（`medical_record`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。`POST /records/{record}/summarize` はさらに**AI要約**（`ai_summary`）を必要とする。
+
 ## GET /records
 
 ### Purpose
@@ -323,6 +406,7 @@
 | Code | 条件 |
 |------|------|
 | 401 | 未認証 |
+| 403 | 契約プランにカルテ管理が含まれない |
 | 422 | status が enum 外 / per_page が範囲外 |
 
 ---
@@ -449,6 +533,7 @@
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにカルテ管理またはAI要約が含まれない |
 | 422 | 要約対象のテキストが無い |
 
 ### Response
@@ -464,6 +549,8 @@
 ---
 
 # Photos
+
+本グループのエンドポイントは、契約プランに**写真管理**（`photo`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。
 
 ## POST /records/{record}/photos
 
@@ -515,6 +602,8 @@ multipart/form-data
 ---
 
 # Menus
+
+本グループのエンドポイントは、契約プランに**予約管理**（`reservation`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。メニューは施術時間・料金の定義であり予約と公開Web予約からのみ参照されるため、予約と同じ機能として扱う。
 
 ## GET /menus
 
@@ -727,6 +816,8 @@ multipart/form-data
 
 # Reservations
 
+本グループのエンドポイントは、契約プランに**予約管理**（`reservation`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。
+
 ## GET /reservations
 
 ### Purpose
@@ -782,6 +873,7 @@ multipart/form-data
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランに予約管理が含まれない |
 | 422 | to が from より前 / 期間が31日を超える / 日付形式不正 |
 
 ---
@@ -819,6 +911,7 @@ multipart/form-data
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランに予約管理が含まれない |
 | 422 | ダブルブッキング / 無効なメニュー / バリデーションエラー |
 
 ### Response
@@ -930,7 +1023,335 @@ multipart/form-data
 
 ---
 
+# Subscription
+
+サブスクリプション契約の確認・開始・変更・解約API（[ADR-029](../decisions/ADR-029-subscription-billing.md) 参照）。決済・請求の Source of Truth は Stripe に置き、アプリは機能制御に必要な項目だけを同期する。
+
+本グループはプラン制限の対象外（契約が切れていても開ける。塞ぐと再契約できなくなるため）。
+
+## 共通事項
+
+### 二重契約を防ぐ2段構え
+
+Checkout 完了から Webhook 到着までの数秒、アプリDBは「未契約」のままになる。この窓で
+2本目の契約が成立すると、アプリから見えないまま二重に課金される。
+
+1. `POST /subscription/sync-checkout` … 戻り先URLの `session_id` を渡すと、Stripe から結果を
+   取り直して即座に反映する。他サロンのセッションを渡された場合は 403。
+2. `POST /subscription/checkout` … 下記のとおり Stripe 側も確認する（初回契約は Customer が
+   まだ無いため 1 が担う）。
+
+### 二重契約を防ぐため Stripe 側も確認する
+
+`POST /subscription/checkout` は、DBの契約状態に加えて Stripe 側の Customer に有効な
+サブスクリプションが無いかも確認する。Checkout 完了から Webhook 到着までの数秒はDBが
+「未契約」のままであり、その窓で2本目の契約が成立すると二重課金になるため。
+有効な契約が見つかった場合はそれをDBへ取り込んだうえで 422 を返す。
+
+### 契約を動かせるのはオーナーとマネージャーだけ
+
+契約状態の**参照**（`GET /subscription`）は全ロールに開く（プラン制限の理由を知る必要があるため）。一方で契約開始・プラン変更・解約・解約取消・カスタマーポータルの発行は `owner` / `manager` に限り、`staff` には 403 を返す。一般スタッフの操作でサロンの請求が変わらないようにするためで、Googleカレンダーの連携モード変更と同じ扱いとする。
+
+### Price ID をクライアントから受け取らない
+
+契約の開始・プラン変更で受け取るのは**アプリのプランキー（`lite` / `standard` / `pro`）のみ**とし、Stripe の Price ID をリクエストで受け取らない。Price ID はサーバが `config/billing.php` から引くため、クライアントが指定した値が Stripe へ渡ることはない（任意の価格での契約を防ぐ）。
+
+### カード情報は Backend に到達しない
+
+Stripe Checkout / カスタマーポータルへの**リダイレクト方式**を採用し、Stripe.js / Elements は導入しない。カード番号・有効期限・セキュリティコードは Stripe がホストする画面で入力され、**Backend には一切到達しない**。DBにもカード情報は保存せず、保持するのは `stripe_customer_id` / `stripe_subscription_id` のみ。
+
+### DEV は Test Mode / 本番は Live Mode
+
+`APP_ENV=local` は Stripe の Test Mode（`sk_test_` / Test Mode の price / Test の webhook secret）、`APP_ENV=production` は Live Mode（`sk_live_` / Live Mode の price / Live の webhook secret）を使う。すべての Stripe API 呼び出しの手前でキーのモードと実行環境を突き合わせ、取り違えていれば例外にする（500）。事前診断は `php artisan stripe:check`（秘密鍵は表示せず、モードと設定の有無のみ出力する）。
+
+### 契約状態と利用可否
+
+`status` は Stripe の値をそのまま保持する（trialing / active / past_due / canceled / unpaid / incomplete / incomplete_expired / paused）。機能を利用できるのは **trialing / active / past_due** の3状態（前述の「Plan / Feature 制限」参照）。
+
+### 反映経路
+
+契約内容の反映は**フロントの申告ではなく Stripe Webhook（後述の「Stripe Webhook」）でのみ**行う。プラン変更・解約・解約取消の各APIは Stripe への操作結果をその場で同期して返すが、その後の状態変化（支払い失敗・期間終了・カード更新）は Webhook 経由で届く。
+
+---
+
+## GET /subscription
+
+### Purpose
+
+自サロンの契約状況・利用できる機能・プランカタログを取得する。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager, staff |
+
+### Response
+
+```json
+{
+  "data": {
+    "subscription": {
+      "plan": "standard",
+      "plan_label": "Standard",
+      "monthly_price": 1980,
+      "status": "active",
+      "status_label": "利用中",
+      "is_active": true,
+      "needs_payment_attention": false,
+      "cancel_at_period_end": false,
+      "current_period_start": "2026-09-01T00:00:00+00:00",
+      "current_period_end": "2026-10-01T00:00:00+00:00",
+      "canceled_at": null,
+      "ended_at": null,
+      "trial_ends_at": null,
+      "has_payment_method": true,
+      "is_subscribed": true
+    },
+    "plan": "standard",
+    "features": {
+      "customer": true,
+      "medical_record": true,
+      "photo": true,
+      "reservation": true,
+      "google_calendar": true,
+      "line": true,
+      "ai_summary": false,
+      "analytics": false
+    },
+    "plans": [
+      {
+        "code": "lite",
+        "label": "Lite",
+        "monthly_price": 980,
+        "features": ["customer", "medical_record", "photo"],
+        "is_purchasable": true
+      },
+      {
+        "code": "standard",
+        "label": "Standard",
+        "monthly_price": 1980,
+        "features": ["customer", "medical_record", "photo", "reservation", "google_calendar", "line"],
+        "is_purchasable": true
+      },
+      {
+        "code": "pro",
+        "label": "Pro",
+        "monthly_price": 3980,
+        "features": ["customer", "medical_record", "photo", "reservation", "google_calendar", "line", "ai_summary", "analytics"],
+        "is_purchasable": true
+      }
+    ]
+  }
+}
+```
+
+### Notes
+
+- 契約が無い場合は `subscription: null` / `plan: null`、`features` は全 false を返す（404 にはしない。プラン選択画面の初期表示用）
+- `plan` は**現在有効なプラン**。`subscription.plan` に値があっても、状態が利用を許さない（canceled / unpaid など）場合は null になる
+- `subscription.is_active` は利用可否（trialing / active / past_due で true）、`needs_payment_attention` は支払いの注意喚起が必要な状態（past_due / unpaid / incomplete）
+- `status_label` / `plan_label` は画面表示用の日本語ラベル（トライアル中 / 利用中 / お支払い確認中 / 解約済み / 利用停止中 / お支払い手続き未完了 / お支払い手続き期限切れ / 一時停止中）
+- Stripe の識別子（stripe_customer_id / stripe_subscription_id）はレスポンスに含めず、導線の出し分けに使う真偽値（`has_payment_method` / `is_subscribed`）のみ返す
+- `plans` はプランカタログ（`config/billing.php`）の全プラン。`is_purchasable` は Stripe の Price ID が設定されているか
+- 期間の日時は保存値（UTC）をそのまま ISO 8601 で返す
+- **保存済みの値のみを返し、Stripe API は呼ばない**
+
+---
+
+## POST /subscription/checkout
+
+### Purpose
+
+契約を開始するための Stripe Checkout セッションを作成し、リダイレクト先URLを返す。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager |
+
+### Request
+
+| Field | Type | Required | Description |
+|--------|------|----------|-------------|
+| plan | string | ✓ | プランキー（lite / standard / pro）。Stripe の Price ID は受け取らない |
+
+### Notes
+
+- Price ID はサーバが `config/billing.php` から引く。クライアントが指定した値が Stripe へ渡ることはない
+- 既存の stripe_customer_id があれば必ず再利用する（1サロン1 Customer）。未作成の場合はログインユーザーのメールアドレスを Checkout に渡す
+- `metadata` と `subscription_data.metadata` に salon_id / plan を、`client_reference_id` に salon_id を載せ、Webhook でサロンを解決できるようにする
+- 戻り先は `success_url` = `{FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=success&session_id={CHECKOUT_SESSION_ID}` / `cancel_url` = `{FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=cancel`（BILLING_RETURN_PATH の既定は `/settings/plan`）
+- カード情報は Stripe がホストする画面で入力され、Backend には到達しない
+- **契約内容がDBへ反映されるのは checkout.session.completed の Webhook 受信時**。決済直後のリダイレクト戻りの時点では未反映のことがある
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | plan が lite / standard / pro 以外 / すでに契約中（プラン変更を使う） |
+| 500 | Stripe の設定不備（Price ID 未設定・Live/Test の取り違え）/ Stripe API エラー |
+
+### Response
+
+```json
+{
+  "data": {
+    "url": "https://checkout.stripe.com/c/pay/cs_test_xxxxxxxx"
+  }
+}
+```
+
+---
+
+## POST /subscription/portal
+
+### Purpose
+
+支払い方法の変更・請求履歴の確認を行う Stripe カスタマーポータルのセッションを作成し、リダイレクト先URLを返す。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager |
+
+### Notes
+
+- 支払い方法・請求書・領収書はアプリで扱わず、すべて Stripe の画面に委ねる
+- 戻り先は `{FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=portal`
+- リクエストボディは不要
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | Stripe Customer が未作成（まだ一度も契約していない） |
+| 500 | Stripe の設定不備 / Stripe API エラー |
+
+### Response
+
+```json
+{
+  "data": {
+    "url": "https://billing.stripe.com/p/session/xxxxxxxx"
+  }
+}
+```
+
+---
+
+## POST /subscription/change-plan
+
+### Purpose
+
+契約中のプランを変更する。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager |
+
+### Request
+
+| Field | Type | Required | Description |
+|--------|------|----------|-------------|
+| plan | string | ✓ | 変更先のプランキー（lite / standard / pro） |
+
+### Notes
+
+- Stripe の subscription item の price を差し替える（`proration_behavior: create_prorations` / `payment_behavior: error_if_incomplete`）
+- **即時反映・日割り精算は Stripe に委ねる**。アプリ側で請求金額を計算することはしない。ダウングレードの差額は次回請求へクレジットとして繰り越される
+- 変更結果はレスポンスに反映済み。あわせて customer.subscription.updated の Webhook でも同期される
+- ダウングレードでデータは削除しない。LINE連携情報・Googleカレンダー接続も保持し、再アップグレードでそのまま復帰する（能動的な解除処理は行わない）
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | plan が lite / standard / pro 以外 / 契約が無い / すでに同じプランを契約中 |
+| 500 | Stripe の設定不備 / Stripe API エラー（支払いが未完了で確定できない場合を含む） |
+
+### Response
+
+200 OK（`GET /subscription` の `subscription` と同形式）
+
+---
+
+## POST /subscription/cancel
+
+### Purpose
+
+解約を申請する（期間終了時に停止する）。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager |
+
+### Notes
+
+- Stripe の `cancel_at_period_end` を true にする。**即時停止はしない**（期間終了までは利用できる）
+- 期間終了で Stripe が status を canceled にし、Webhook 経由で利用停止になる
+- **解約しても顧客・カルテ・写真は一切削除しない。** LINE連携情報・Googleカレンダー接続も保持し、再契約時にそのまま復帰できる
+- リクエストボディは不要
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | 契約が無い / すでに解約を申請済み |
+| 500 | Stripe API エラー |
+
+### Response
+
+200 OK（`GET /subscription` の `subscription` と同形式。cancel_at_period_end=true）
+
+---
+
+## POST /subscription/resume
+
+### Purpose
+
+解約申請を取り消して契約を継続する。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | Required |
+| Roles | owner, manager |
+
+### Notes
+
+- Stripe の `cancel_at_period_end` を false に戻す
+- 期間終了後（status=canceled）は対象外。`POST /subscription/checkout` で契約し直す
+- リクエストボディは不要
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 422 | 契約が無い / 解約が申請されていない |
+| 500 | Stripe API エラー |
+
+### Response
+
+200 OK（`GET /subscription` の `subscription` と同形式。cancel_at_period_end=false）
+
+---
+
 # LINE Settings
+
+本グループのエンドポイントは、契約プランに**LINE連携**（`line`）が含まれない場合すべて 403 を返す（前述の「Plan / Feature 制限」参照）。プランのダウングレードでも保存済みの認証情報・顧客の連携状態は削除せず、再アップグレードでそのまま復帰する。
 
 ## GET /line-settings
 
@@ -1031,6 +1452,7 @@ LINE Messaging API の認証情報を保存する。
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにLINE連携が含まれない |
 | 404 | 認証情報が未登録 |
 | 422 | 接続確認失敗（channel_access_token 不正・LINE API エラー。channel_secret / channel_id の誤りはここでは検出できない） |
 
@@ -1062,6 +1484,7 @@ LINE連携を解除する（物理削除。SoftDelete ではない）。
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにLINE連携が含まれない |
 | 404 | 認証情報が未登録 |
 
 ### Response
@@ -1071,6 +1494,8 @@ LINE連携を解除する（物理削除。SoftDelete ではない）。
 ---
 
 # Booking Page
+
+本エンドポイントは、契約プランに**予約管理**（`reservation`）が含まれない場合 403 を返す（前述の「Plan / Feature 制限」参照）。
 
 ## GET /booking-page
 
@@ -1108,6 +1533,8 @@ LINE連携を解除する（物理削除。SoftDelete ではない）。
 Googleカレンダー双方向同期の設定API（フェーズ3で追加。[ADR-025](../decisions/ADR-025-google-calendar-sync.md) 参照）。
 
 1接続 = 1 Google アカウントの1カレンダーとし、同一カレンダーに対して書き込み（RB の予約）と読み取り（RB 以外の予定 = busy）の両方を行う。
+
+本グループのエンドポイントは、契約プランに**Googleカレンダー連携**（`google_calendar`）が含まれない場合すべて 403 を返す（認証なしの `GET /google-calendar/callback` を除く。前述の「Plan / Feature 制限」参照）。プランのダウングレードでも接続情報は削除せず、同期を止めるだけとする（再アップグレードでそのまま復帰する）。
 
 ## 共通事項
 
@@ -1237,6 +1664,7 @@ Google のイベントIDは**カレンダー単位のスコープ**であり、�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 422 | to が from より前 / 期間が31日を超える / 日付形式不正 |
 
 ---
@@ -1273,6 +1701,7 @@ Google のイベントIDは**カレンダー単位のスコープ**であり、�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 422 | mode が per_staff / shared 以外 |
 
 ### Response
@@ -1319,6 +1748,7 @@ Google OAuth（認可コードフロー）を開始し、認可URLを取得す�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 422 | モードが未設定（先に PUT /google-calendar/mode が必要） |
 
 ---
@@ -1407,6 +1837,7 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 404 | 自サロンかつ操作権限のある接続が存在しない |
 | 422 | 接続が needs_reconnect 状態（再接続が必要）/ Google API エラー |
 
@@ -1445,6 +1876,7 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 404 | 自サロンかつ操作権限のある接続が存在しない |
 | 422 | calendar_id がリテラル primary でも calendarList の id でもない / 接続が needs_reconnect 状態 / Google API エラー |
 
@@ -1481,6 +1913,7 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 
 | Code | 条件 |
 |------|------|
+| 403 | 契約プランにGoogleカレンダー連携が含まれない |
 | 404 | 自サロンかつ操作権限のある接続が存在しない |
 
 ### Response
@@ -1501,6 +1934,9 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 | Rate Limit | 全エンドポイントにIP単位の throttle を適用（超過時 429）。予約作成は加えてサロン（booking_slug）単位 30回/分 |
 
 > 以下のパスは `/api/public/v1` からの相対パス。
+
+> **予約管理（`reservation`）を含まないプランのサロンでは、booking_slug 経路（サロン情報・空き枠・予約登録）は 404 を返す。** 403 にするとスラッグの実在を外部に知らせてしまうため、`is_active=false` のサロンと同じ扱いに揃える（前述の「Plan / Feature 制限」参照）。
+> booking_token 経路（`GET /bookings/{booking_token}` / `POST /bookings/{booking_token}/cancel`）は**契約プランの影響を受けない**。ダウングレード前に受けた予約は、予約者が最後まで照会・キャンセルできるようにする。
 
 ---
 
@@ -1547,7 +1983,7 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 
 | Code | 条件 |
 |------|------|
-| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない |
+| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない / サロンの契約プランに予約管理が含まれない |
 | 429 | レート制限超過 |
 
 ---
@@ -1599,7 +2035,7 @@ Google OAuth のコールバックを受け、トークン交換・接続保存�
 
 | Code | 条件 |
 |------|------|
-| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない |
+| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない / サロンの契約プランに予約管理が含まれない |
 | 422 | 日付形式不正 / 無効なメニュー・スタッフ |
 | 429 | レート制限超過 |
 
@@ -1672,7 +2108,7 @@ Web予約を登録する。
 
 | Code | 条件 |
 |------|------|
-| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない |
+| 404 | booking_slug に一致する有効なサロン（is_active=true）が存在しない / サロンの契約プランに予約管理が含まれない |
 | 422 | バリデーションエラー / start_at が空き枠計算で有効な枠に一致しない（枠が埋まっている・営業時間外・休業日・30分グリッド外・予約可能範囲外・Googleカレンダー連携時の外部予定〈busy〉との重なりを含む） / 無効なメニュー・スタッフ / 同一 phone の未来の reserved 予約が既に3件 |
 | 429 | レート制限超過（10回/分/IP または サロン単位 30回/分） |
 
@@ -1864,6 +2300,69 @@ Google カレンダーの push 通知（watch チャネル）を受信する（�
 
 ---
 
+# Stripe Webhook
+
+## POST /api/webhooks/stripe
+
+### Purpose
+
+Stripe からの Webhook イベントを受信し、契約状態をDBへ同期する（全サロン共通の1エンドポイント）。
+
+### Access
+
+| Item | Value |
+|------|-------|
+| Authentication | 不要（Stripe-Signature による署名検証） |
+| Roles | - |
+| Rate Limit | なし |
+
+### Request Headers
+
+| Name | Required | Description |
+|------|----------|-------------|
+| Stripe-Signature | ✓ | `t=<timestamp>,v1=<signature>` 形式。`{t}.{raw body}` を STRIPE_WEBHOOK_SECRET で HMAC-SHA256 した署名 |
+
+### Request
+
+Stripe の Event オブジェクト。処理で参照するフィールドは `id` / `type` / `created` / `data.object`（スキーマ定義は openapi.yaml の StripeWebhookEvent を参照）。
+
+### Notes
+
+- パスは `/api/v1` の外（`/api/webhooks/stripe`）。認証なし・throttle なし
+- **DEV と本番で別の Webhook エンドポイントを Stripe に登録し**、それぞれ Test / Live の STRIPE_WEBHOOK_SECRET を設定する
+- 署名検証は Stripe-Signature の `t` と `v1` を解析し、`{t}.{raw body}` の HMAC-SHA256 を `hash_equals`（タイミング安全）で比較する。あわせて `t` と現在時刻の乖離を STRIPE_WEBHOOK_TOLERANCE 秒（既定300）で検査し、古い署名の再送（リプレイ）を弾く
+- **署名検証に失敗した場合は 400**（LINE / Googleカレンダー Webhook の「常に 200」とは異なる方針）。Stripe は 4xx を設定不備として記録しダッシュボードに残すため、秘密鍵の取り違えに気づける
+- 正常に処理できた場合・対象外イベントの場合はいずれも 200
+- 処理中に例外が出た場合は stripe_webhook_events に failed として記録したうえで投げ直す（500 → Stripe が再送し、再処理できる）
+- 冪等性は `stripe_webhook_events.stripe_event_id` の unique 制約で担保する。processed / skipped として記録済みのイベントの再送は何もしない
+- 受信内容はイベントIDと種別のみを記録し、**カード情報・請求先などの個人情報は保存しない**（payload をそのまま残さない）
+- **契約状態の同期はこの経路でのみ行う**（フロントの申告では更新しない）
+
+### 扱うイベント
+
+| Event | 処理 |
+|-------|------|
+| checkout.session.completed | サロンと stripe_customer_id を紐づけ、Stripe から subscription を取り直して同期する |
+| customer.subscription.created | 契約内容を同期する |
+| customer.subscription.updated | 契約内容を同期する（プラン変更・解約申請・状態遷移） |
+| customer.subscription.deleted | 契約内容を同期する（期間終了・解約の確定） |
+| invoice.payment_failed | subscription_events に payment_failed を記録する（利用停止はしない。回収・再試行は Stripe に委ね、unpaid になった時点で停止） |
+| invoice.paid | 受理のみ（状態は customer.subscription.updated で届く） |
+| 上記以外 | skipped として記録し 200 を返す |
+
+### Errors
+
+| Code | 条件 |
+|------|------|
+| 400 | 署名検証失敗（ヘッダ欠落・形式不正・不一致・タイムスタンプの乖離）/ ペイロードを解釈できない・id / type が無い |
+| 500 | イベント処理中の例外（stripe_webhook_events に failed を記録。Stripe が再送する） |
+
+### Response
+
+200 OK（ボディなし）
+
+---
+
 # Common Response
 
 ## Success
@@ -1887,6 +2386,25 @@ Google カレンダーの push 通知（watch チャネル）を受信する（�
 
 ---
 
+## Feature Required
+
+契約プランに含まれない機能へアクセスした場合のレスポンス（403。[ADR-029](../decisions/ADR-029-subscription-billing.md) 参照）。
+
+```json
+{
+  "message": "予約管理はStandardプラン以上でご利用いただけます。",
+  "feature": "reservation",
+  "required_plan": "standard",
+  "current_plan": "lite"
+}
+```
+
+- `feature` は機能キー、`required_plan` はその機能を含む最も安いプラン、`current_plan` は現在有効なプラン（契約が無い・失効している場合は null）
+- フロントはこの値からアップグレード導線（`/plan-required/:feature`）の文言を組み立てる
+- **401 は返さない**。SPA は 401 を検知するとローカルの認証状態を破棄してログイン画面へ遷移するため、契約起因の遮断を認証切れと誤認させない
+
+---
+
 # HTTP Status Codes
 
 | Code | Description |
@@ -1895,9 +2413,9 @@ Google カレンダーの push 通知（watch チャネル）を受信する（�
 | 201 | Created |
 | 204 | No Content |
 | 302 | Found（リダイレクト。`GET /google-calendar/callback` のみ） |
-| 400 | Bad Request |
+| 400 | Bad Request（`POST /api/webhooks/stripe` の署名検証失敗など） |
 | 401 | Unauthorized |
-| 403 | Forbidden |
+| 403 | Forbidden（契約プランに含まれない機能へのアクセス。前述の「Plan / Feature 制限」参照） |
 | 404 | Not Found |
 | 409 | Conflict |
 | 422 | Validation Error |

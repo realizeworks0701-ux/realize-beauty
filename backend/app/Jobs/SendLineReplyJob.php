@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\Feature;
 use App\Repositories\LineSettingRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Line\LineApiException;
 use App\Services\Line\LineClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -31,10 +33,11 @@ class SendLineReplyJob implements ShouldQueue
     public function handle(
         LineSettingRepository $lineSettingRepository,
         LineClient $lineClient,
+        EntitlementService $entitlements,
     ): void {
         $setting = $lineSettingRepository->find($this->lineSettingId);
 
-        if ($setting === null) {
+        if ($setting === null || ! $entitlements->can($setting->salon_id, Feature::Line)) {
             return;
         }
 

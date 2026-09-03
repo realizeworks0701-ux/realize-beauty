@@ -1,0 +1,392 @@
+FeatureKey:
+  type: string
+  description: >
+    利用可否を制御する機能単位（ADR-029）。
+    プラン名ではなくこのキーで判定する。
+
+  enum:
+    - customer
+    - medical_record
+    - photo
+    - reservation
+    - google_calendar
+    - line
+    - ai_summary
+    - analytics
+
+  example: reservation
+
+########################################################
+
+FeatureFlags:
+  type: object
+  description: >
+    機能ごとの利用可否。全 FeatureKey を漏れなく列挙する。
+    契約が無い、または契約が失効しているサロンはすべて false（fail closed）。
+
+  required:
+    - customer
+    - medical_record
+    - photo
+    - reservation
+    - google_calendar
+    - line
+    - ai_summary
+    - analytics
+
+  properties:
+
+    customer:
+      type: boolean
+      description: 顧客管理
+      example: true
+
+    medical_record:
+      type: boolean
+      description: カルテ管理
+      example: true
+
+    photo:
+      type: boolean
+      description: 写真管理
+      example: true
+
+    reservation:
+      type: boolean
+      description: 予約管理
+      example: true
+
+    google_calendar:
+      type: boolean
+      description: Googleカレンダー連携
+      example: true
+
+    line:
+      type: boolean
+      description: LINE連携
+      example: true
+
+    ai_summary:
+      type: boolean
+      description: AI要約
+      example: false
+
+    analytics:
+      type: boolean
+      description: 高度な分析
+      example: false
+
+########################################################
+
+Subscription:
+  type: object
+  description: >
+    現在の契約内容（1サロン1件）。
+    決済・請求の正本は Stripe に置き、機能制御に必要な項目のみを同期して返す。
+    Stripe の識別子（customer ID / subscription ID）は運用に不要なため露出させず、
+    導線の出し分けに使う真偽値（has_payment_method / is_subscribed）だけを返す。
+    解約申請中（cancel_at_period_end=true）でも current_period_end までは利用できる。
+
+  required:
+    - plan
+    - plan_label
+    - monthly_price
+    - status
+    - status_label
+    - is_active
+    - needs_payment_attention
+    - cancel_at_period_end
+    - has_payment_method
+    - is_subscribed
+
+  properties:
+
+    plan:
+      $ref: "./common.yaml#/SubscriptionPlan"
+
+    plan_label:
+      type: string
+      description: プランの表示名（config/billing.php の label）
+      example: Standard
+
+    monthly_price:
+      type: integer
+      description: 月額（税込・円）
+      example: 1980
+
+    status:
+      $ref: "./common.yaml#/SubscriptionStatus"
+
+    status_label:
+      type: string
+      description: 契約状態の日本語表示名
+      example: 利用中
+
+    is_active:
+      type: boolean
+      description: 契約中の機能を利用できる状態か（trialing / active / past_due が true）
+      example: true
+
+    needs_payment_attention:
+      type: boolean
+      description: >
+        支払いに問題があり注意喚起が必要か（past_due / unpaid / incomplete が true）。
+        プラン設定画面の警告バナー表示に使う
+      example: false
+
+    cancel_at_period_end:
+      type: boolean
+      description: 解約申請中か。true でも current_period_end までは利用できる
+      example: false
+
+    current_period_start:
+      type: string
+      format: date-time
+      nullable: true
+      description: 現在の請求期間の開始日時
+      example: "2026-09-01T00:00:00+00:00"
+
+    current_period_end:
+      type: string
+      format: date-time
+      nullable: true
+      description: 現在の請求期間の終了日時（解約申請中はこの日時で利用停止となる）
+      example: "2026-10-01T00:00:00+00:00"
+
+    canceled_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: 解約が確定した日時
+      example: null
+
+    ended_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: 契約が終了した日時
+      example: null
+
+    trial_ends_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: トライアル終了日時
+      example: null
+
+    has_payment_method:
+      type: boolean
+      description: >
+        Stripe Customer が作成済みか（お支払い方法の管理導線＝Customer Portal を出せるか）
+      example: true
+
+    is_subscribed:
+      type: boolean
+      description: >
+        Stripe Subscription が作成済みか（プラン変更・解約の導線を出せるか）。
+        false の場合は契約開始（Checkout）から始める
+      example: true
+
+########################################################
+
+Plan:
+  type: object
+  description: >
+    プランカタログの1件。プラン一覧画面の表示に使う。
+    プラン→機能の対応表は config/billing.php が単一の正であり、plans テーブルは持たない。
+
+  required:
+    - code
+    - label
+    - monthly_price
+    - features
+    - is_purchasable
+
+  properties:
+
+    code:
+      $ref: "./common.yaml#/SubscriptionPlan"
+
+    label:
+      type: string
+      description: プランの表示名
+      example: Standard
+
+    monthly_price:
+      type: integer
+      description: 月額（税込・円）
+      example: 1980
+
+    features:
+      type: array
+      description: このプランで利用できる機能キーの一覧
+      items:
+        $ref: "#/FeatureKey"
+      example:
+        - customer
+        - medical_record
+        - photo
+        - reservation
+        - google_calendar
+        - line
+
+    is_purchasable:
+      type: boolean
+      description: Stripe Price ID が設定済みで購入導線を出せるか（未設定の環境では false）
+      example: true
+
+########################################################
+
+SubscriptionOverview:
+  type: object
+  description: >
+    プラン設定画面が必要とする情報を1回で返すまとまり。
+    契約が無い場合は subscription / plan が null となり、features はすべて false。
+
+  required:
+    - subscription
+    - plan
+    - features
+    - plans
+
+  properties:
+
+    subscription:
+      description: 現在の契約。契約行が無い場合は null
+      nullable: true
+      allOf:
+        - $ref: "#/Subscription"
+
+    plan:
+      description: >
+        現在有効なプラン。契約が無い、または契約が失効している場合は null（＝全機能不可）
+      nullable: true
+      allOf:
+        - $ref: "./common.yaml#/SubscriptionPlan"
+
+    features:
+      $ref: "#/FeatureFlags"
+
+    plans:
+      type: array
+      description: 選択できるプランの一覧（安い順）
+      items:
+        $ref: "#/Plan"
+
+########################################################
+
+SubscriptionOverviewResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/SubscriptionOverview"
+
+########################################################
+
+SubscriptionResponse:
+  type: object
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      $ref: "#/Subscription"
+
+########################################################
+
+CheckoutUrlResponse:
+  type: object
+  description: >
+    Stripe がホストする画面へのリダイレクト先URL。
+    クライアントはこの URL へ遷移させるだけでよく、カード情報は Laravel に一切到達しない。
+
+  required:
+    - data
+
+  properties:
+
+    data:
+      type: object
+
+      required:
+        - url
+
+      properties:
+
+        url:
+          type: string
+          format: uri
+          description: Stripe Checkout / Customer Portal のURL（短命・単回使用）
+          example: "https://checkout.stripe.com/c/pay/cs_test_a1b2c3"
+
+########################################################
+
+PlanRequest:
+  type: object
+  description: >
+    プランの指定。受け取るのはアプリの plan key のみで、
+    Stripe Price ID はサーバが config/billing.php から引く
+    （クライアントが指定した値が Stripe へ渡ることはない）。
+
+  required:
+    - plan
+
+  properties:
+
+    plan:
+      $ref: "./common.yaml#/SubscriptionPlan"
+
+########################################################
+
+StripeWebhookEvent:
+  type: object
+  description: >
+    Stripe から送信される Webhook イベント。
+    処理で参照するフィールドのみ定義し、Stripe が送信するその他のフィールドは
+    additionalProperties で許容する（payload をそのまま保存はしない）。
+
+  additionalProperties: true
+
+  required:
+    - id
+    - type
+    - data
+
+  properties:
+
+    id:
+      type: string
+      description: イベントID（stripe_webhook_events.stripe_event_id の unique 制約で冪等性を担保する）
+      example: "evt_1PabcdEFghIJklmn"
+
+    type:
+      type: string
+      description: >
+        イベント種別。checkout.session.completed /
+        customer.subscription.created・updated・deleted /
+        invoice.payment_failed / invoice.paid を処理し、それ以外は skipped として 200 を返す
+      example: "customer.subscription.updated"
+
+    created:
+      type: integer
+      description: 発生時刻（UNIX秒。stripe_webhook_events.occurred_at に記録する）
+      example: 1788400000
+
+    data:
+      type: object
+      additionalProperties: true
+      description: イベント本体
+
+      properties:
+
+        object:
+          type: object
+          additionalProperties: true
+          description: 種別に応じた Stripe オブジェクト（subscription / checkout.session / invoice）

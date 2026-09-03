@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureFeatureEnabled;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -25,6 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // ただし左端は client が X-Forwarded-For を自分で付けると詐称できるため、
         // レート制限はIPだけに依存させない（AppServiceProvider の auth-login を参照）。
         $middleware->trustProxies(at: ['0.0.0.0/0', '::/0']);
+
+        // 契約プランに含まれない機能を 403 で遮断する（ADR-029）。
+        // 例: Route::middleware('feature:reservation')。auth:sanctum の内側でのみ使う。
+        $middleware->alias([
+            'feature' => EnsureFeatureEnabled::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Billing\EntitlementService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Console\ServeCommand;
 use Illuminate\Http\Request;
@@ -16,7 +17,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // 機能の利用可否判定は1リクエスト中に何度も走る（middleware・Service・Resource）ため、
+        // サロンごとのプラン解決を1回のクエリに抑える。
         //
+        // singleton ではなく scoped にする。queue:work は1プロセスで多数のジョブを処理し、
+        // singleton だとワーカーが生きている間ずっと古いプランを掴み続ける
+        // （解約・ダウングレードが反映されない）。scoped ならジョブごとに破棄される
+        // （QueueServiceProvider が forgetScopedInstances() を呼ぶ）。
+        $this->app->scoped(EntitlementService::class);
     }
 
     /**

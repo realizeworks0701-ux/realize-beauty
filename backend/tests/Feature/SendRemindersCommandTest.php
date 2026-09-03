@@ -11,6 +11,7 @@ use App\Models\Reservation;
 use App\Models\Salon;
 use App\Models\User;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Line\LineClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -186,6 +187,7 @@ class SendRemindersCommandTest extends TestCase
         (new SendReservationReminderJob($reservation->id))->handle(
             app(ReservationRepository::class),
             app(LineClient::class),
+            app(EntitlementService::class),
         );
     }
 }

@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\Feature;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Google\GoogleApiException;
 use App\Services\Google\GoogleAuthException;
 use App\Services\Google\GoogleEventSyncService;
@@ -36,10 +38,13 @@ class SyncReservationToGoogleJob implements ShouldQueue
     public function handle(
         ReservationRepository $reservationRepository,
         GoogleEventSyncService $syncService,
+        EntitlementService $entitlements,
     ): void {
         $reservation = $reservationRepository->findForSync($this->reservationId);
 
-        if ($reservation === null) {
+        // 投入後にプランが下がった場合も送信しない（投入時と実行時の両方で確認する）
+        if ($reservation === null
+            || ! $entitlements->can($reservation->salon_id, Feature::GoogleCalendar)) {
             return;
         }
 

@@ -11,6 +11,7 @@ use App\Models\Reservation;
 use App\Models\Salon;
 use App\Models\User;
 use App\Repositories\ReservationRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\Line\LineClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -76,7 +77,7 @@ class SendBookingConfirmationJobTest extends TestCase
         $reservation = $this->createConfirmationTarget();
 
         $job = (new SendBookingConfirmationJob($reservation->id))->withFakeQueueInteractions();
-        $job->handle(app(ReservationRepository::class), app(LineClient::class));
+        $job->handle(app(ReservationRepository::class), app(LineClient::class), app(EntitlementService::class));
 
         // 429 は恒久エラーとしてリトライせず fail で打ち切る
         $job->assertFailed();
@@ -113,6 +114,7 @@ class SendBookingConfirmationJobTest extends TestCase
         (new SendBookingConfirmationJob($reservation->id))->handle(
             app(ReservationRepository::class),
             app(LineClient::class),
+            app(EntitlementService::class),
         );
     }
 }

@@ -102,6 +102,39 @@ ForbiddenResponse:
 
 ########################################################
 
+FeatureRequiredResponse:
+  type: object
+  description: >
+    契約プランに含まれない機能へアクセスした場合のレスポンス（403・ADR-029）。
+    401 は返さない（SPA が 401 を検知するとローカルの認証状態を破棄してログイン画面へ飛ばすため）。
+    フロントがアップグレード導線の文言を組み立てられるよう、
+    対象機能と必要プランを機械可読な形で添える。
+
+  properties:
+
+    message:
+      type: string
+      example: 予約管理はStandardプラン以上でご利用いただけます。
+
+    feature:
+      type: string
+      description: 要求された機能キー
+      example: reservation
+
+    required_plan:
+      type: string
+      nullable: true
+      description: その機能を含む最も安いプラン。どのプランにも含まれない場合は null
+      example: standard
+
+    current_plan:
+      type: string
+      nullable: true
+      description: 現在のプラン。契約が無い・失効している場合は null
+      example: lite
+
+########################################################
+
 NotFoundResponse:
   type: object
 
@@ -142,3 +175,40 @@ Role:
     - staff
 
   example: owner
+
+########################################################
+
+SubscriptionPlan:
+  type: string
+  description: >
+    契約プラン（ADR-029）。安い順に並べる。
+    月額・利用可能機能・Stripe Price ID は config/billing.php が単一の正。
+
+  enum:
+    - lite
+    - standard
+    - pro
+
+  example: standard
+
+########################################################
+
+SubscriptionStatus:
+  type: string
+  description: >
+    契約状態（Stripe Subscription の status をそのまま保持する）。
+    利用できるのは trialing / active / past_due の3つで、
+    past_due（初回の支払い失敗〜Stripe の自動再試行中）は利用を止めない。
+    回収フローが尽きて unpaid になった時点で利用停止となる。
+
+  enum:
+    - trialing
+    - active
+    - past_due
+    - canceled
+    - unpaid
+    - incomplete
+    - incomplete_expired
+    - paused
+
+  example: active

@@ -5,6 +5,24 @@ import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import type { DashboardSummary } from '@/types'
 import DashboardPage from './DashboardPage.vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { buildTestUser } from '@/test-support/user'
+
+/** jsdom は localStorage を提供しないため、auth ストア用に最小実装を差し込む */
+function memoryStorage(): Storage {
+  const map = new Map<string, string>()
+  return {
+    get length() {
+      return map.size
+    },
+    key: (i: number) => [...map.keys()][i] ?? null,
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, v),
+    removeItem: (k: string) => void map.delete(k),
+    clear: () => map.clear(),
+  }
+}
 
 const getSummaryMock = vi.hoisted(() => vi.fn())
 
@@ -61,6 +79,7 @@ async function mountPage() {
     routes: [
       { path: '/', component: { template: '<div />' } },
       { path: '/reservations', component: { template: '<div />' } },
+      { path: '/settings/plan', component: { template: '<div />' } },
     ],
   })
   await router.push('/')
@@ -80,6 +99,10 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     getSummaryMock.mockReset()
     getSummaryMock.mockResolvedValue(buildSummary())
+    // DashboardPage は契約プランで表示を出し分けるため auth ストアに依存する
+    vi.stubGlobal('localStorage', memoryStorage())
+    setActivePinia(createPinia())
+    useAuthStore().user = buildTestUser('pro')
   })
 
   it('KPIカード4枚を前月比付きで表示する', async () => {
@@ -111,5 +134,23 @@ describe('DashboardPage', () => {
     getSummaryMock.mockResolvedValue(buildSummary({ today_reservations: [] }))
     const wrapper = await mountPage()
     expect(wrapper.text()).toContain('本日の予約はありません')
+  })
+
+  it('高度な分析が null のプランではアップグレード導線に差し替える', async () => {
+    useAuthStore().user = buildTestUser('standard')
+    getSummaryMock.mockResolvedValue(
+      buildSummary({ sales_trend: null, popular_menus: null, customer_segments: null }),
+    )
+
+    const wrapper = await mountPage()
+    const text = wrapper.text()
+
+    expect(text).toContain('この機能はProプラン以上でご利用いただけます')
+    expect(text).toContain('Proプランを見る')
+    // 基本の指標と本日の予約は残す
+    expect(text).toContain('新規顧客数')
+    expect(text).toContain('山田 ひとみ')
+    // 「実績がまだない」ではなくプラン制限であることを取り違えない
+    expect(text).not.toContain('今月の来店実績はまだありません')
   })
 })

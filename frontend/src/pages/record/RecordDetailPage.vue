@@ -8,6 +8,8 @@ import { useConfirm } from 'primevue/useconfirm'
 import GlassCard from '@/components/common/GlassCard.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import FeatureUpsell from '@/components/common/FeatureUpsell.vue'
+import { useFeatures } from '@/composables/useFeatures'
 import StatusTag from '@/components/common/StatusTag.vue'
 import PhotoGrid from '@/components/common/PhotoGrid.vue'
 import { recordService } from '@/services/recordService'
@@ -15,6 +17,9 @@ import { photoService } from '@/services/photoService'
 import { formatDateTime } from '@/utils/format'
 import { extractErrorMessage } from '@/utils/apiError'
 import type { Photo, TreatmentRecord } from '@/types'
+
+const { can } = useFeatures()
+const canUseAiSummary = computed(() => can('ai_summary'))
 
 const route = useRoute()
 const router = useRouter()
@@ -242,18 +247,23 @@ async function handleFileSelected(event: Event): Promise<void> {
             icon="pi pi-sparkles"
             size="small"
             :loading="summarizing"
+            :disabled="!canUseAiSummary"
             @click="generateSummary"
           />
         </template>
         <div v-if="record.ai_summary" class="ai-summary-box">
           <p class="ai-summary-text">{{ record.ai_summary }}</p>
         </div>
+        <FeatureUpsell v-else-if="!canUseAiSummary" feature="ai_summary" compact />
         <EmptyState
           v-else
           icon="pi pi-sparkles"
           title="AI要約はまだありません"
           description="カルテ内容からAIが要約を作成します"
         />
+        <p v-if="record.ai_summary && !canUseAiSummary" class="ai-summary-locked">
+          過去に生成した要約です。再生成はProプラン以上でご利用いただけます。
+        </p>
       </GlassCard>
 
       <GlassCard title="写真" icon="pi pi-images">
@@ -284,6 +294,12 @@ async function handleFileSelected(event: Event): Promise<void> {
 </template>
 
 <style scoped>
+.ai-summary-locked {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--rb-text-muted);
+}
+
 .skeleton-header {
   display: flex;
   align-items: center;

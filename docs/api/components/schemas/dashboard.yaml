@@ -39,7 +39,10 @@ DashboardResponse:
 
         sales_trend:
           type: array
-          description: 直近6ヶ月の月次売上（古い順。データのない月は 0）
+          nullable: true
+          description: >
+            直近6ヶ月の月次売上（古い順。データのない月は 0）。
+            高度な分析（analytics）を含まないプランでは null。
           items:
             type: object
             required:
@@ -63,7 +66,10 @@ DashboardResponse:
 
         popular_menus:
           type: array
-          description: 当月の visited 予約件数上位5メニュー
+          nullable: true
+          description: >
+            当月の visited 予約件数上位5メニュー。
+            高度な分析（analytics）を含まないプランでは null。
           items:
             type: object
             required:
@@ -90,7 +96,10 @@ DashboardResponse:
 
         customer_segments:
           type: object
-          description: 来店歴のある顧客の分類。判定順は dormant → new → repeat → other
+          nullable: true
+          description: >
+            来店歴のある顧客の分類。判定順は dormant → new → repeat → other。
+            高度な分析（analytics）を含まないプランでは null。
           required:
             - new
             - repeat

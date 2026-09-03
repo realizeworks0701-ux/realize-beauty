@@ -17,6 +17,7 @@ import type {
   MenuCreateInput,
   MenuUpdateInput,
   Photo,
+  PlanCode,
   PublicBooking,
   PublicReservationRequest,
   RecordCreateInput,
@@ -25,14 +26,19 @@ import type {
   ReservationCreateInput,
   ReservationUpdateInput,
   TreatmentRecord,
+  User,
 } from '@/types'
 import { toIsoWithOffset } from '@/utils/format'
 import { PRIMARY_CALENDAR_ID } from '@/utils/googleCalendar'
 import { isWithinBookingWindow, listSlotStartMinutes, slotToIso } from '@/utils/publicBooking'
 import {
   MOCK_BOOKING_SLUG,
+  MOCK_INITIAL_PLAN,
+  MOCK_PLAN_CATALOG,
   MOCK_SALON_NAME,
+  buildMockFeatures,
   buildMockReservations,
+  buildMockSubscription,
   mockBusinessHours,
   mockCustomers,
   mockMenus,
@@ -140,6 +146,19 @@ const paginate = <T>(items: T[], config: InternalAxiosRequestConfig) => {
     },
   }
 }
+
+// 契約プランはモック中に変更できる（プラン別の画面表示を dev:mock で確認するため）
+let currentPlan: PlanCode | null = MOCK_INITIAL_PLAN
+let cancelScheduled = false
+
+const hasAnalytics = (): boolean => buildMockFeatures(currentPlan).analytics
+
+const currentUser = (): User => ({
+  ...mockUser,
+  plan: currentPlan,
+  subscription_status: currentPlan === null ? null : 'active',
+  features: buildMockFeatures(currentPlan),
+})
 
 const parseBody = <T>(config: InternalAxiosRequestConfig): T =>
   typeof config.data === 'string' ? (JSON.parse(config.data) as T) : (config.data as T)
@@ -442,13 +461,58 @@ export function installMockAdapter(instance: AxiosInstance): void {
 
     // ---- Auth ----
     if (method === 'post' && url === '/auth/login') {
-      return respond(config, { data: { token: 'mock-token', user: mockUser } })
+      return respond(config, { data: { token: 'mock-token', user: currentUser() } })
     }
     if (method === 'post' && url === '/auth/logout') {
       return respond(config, null, 204)
     }
     if (method === 'get' && url === '/auth/me') {
-      return respond(config, { data: mockUser })
+      return respond(config, { data: currentUser() })
+    }
+
+    // ---- Subscription ----
+    // Stripe へは接続せず、プランを切り替えて画面の出し分けを確認できるようにする。
+    // Checkout / ポータルのURLはダミーで、実際にはリダイレクトしない。
+    if (url === '/subscription') {
+      if (method === 'get') {
+        return respond(config, {
+          data: {
+            subscription:
+              currentPlan === null
+                ? null
+                : { ...buildMockSubscription(currentPlan), cancel_at_period_end: cancelScheduled },
+            plan: currentPlan,
+            features: buildMockFeatures(currentPlan),
+            plans: MOCK_PLAN_CATALOG,
+          },
+        })
+      }
+    }
+    if (
+      method === 'post' &&
+      (url === '/subscription/checkout' || url === '/subscription/change-plan')
+    ) {
+      const body = parseBody<{ plan?: PlanCode }>(config)
+      if (!body?.plan || !MOCK_PLAN_CATALOG.some((item) => item.code === body.plan)) {
+        return validationError(config, { plan: ['プランを選択してください。'] })
+      }
+      currentPlan = body.plan
+      if (url === '/subscription/change-plan') {
+        return respond(config, { data: buildMockSubscription(currentPlan) })
+      }
+      return respond(config, { data: { url: 'https://checkout.stripe.com/mock-session' } })
+    }
+    if (method === 'post' && url === '/subscription/portal') {
+      return respond(config, { data: { url: 'https://billing.stripe.com/mock-portal' } })
+    }
+    if (method === 'post' && (url === '/subscription/cancel' || url === '/subscription/resume')) {
+      if (currentPlan === null) {
+        return validationError(config, { subscription: ['ご契約がありません。'] })
+      }
+      cancelScheduled = url === '/subscription/cancel'
+      return respond(config, {
+        data: { ...buildMockSubscription(currentPlan), cancel_at_period_end: cancelScheduled },
+      })
     }
 
     // ---- Dashboard ----
@@ -492,10 +556,11 @@ export function installMockAdapter(instance: AxiosInstance): void {
             sales: { current: 324000, previous: 300000 },
             repeat_rate: { current: 78, previous: 73 },
           },
-          sales_trend: salesTrend,
+          // 高度な分析は analytics を含むプランのみ（バックエンドと同じくキーは残して null を返す）
+          sales_trend: hasAnalytics() ? salesTrend : null,
           today_reservations: todayReservations,
-          popular_menus: popularMenus,
-          customer_segments: { new: 28, repeat: 42, dormant: 6, other: 4 },
+          popular_menus: hasAnalytics() ? popularMenus : null,
+          customer_segments: hasAnalytics() ? { new: 28, repeat: 42, dormant: 6, other: 4 } : null,
         },
       })
     }

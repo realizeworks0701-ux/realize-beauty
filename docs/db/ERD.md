@@ -148,7 +148,9 @@ Salon
 ├── LineSetting（1:1）
 ├── GoogleCalendarConnections
 │   └── GoogleBusyBlocks
-└── RecordBlockTemplates
+├── RecordBlockTemplates
+└── Subscription（1:1）
+    └── SubscriptionEvents
 ```
 ---
 
@@ -332,6 +334,103 @@ Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計�
 
 ---
 
+# subscriptions
+
+サロンの契約状態（サブスクリプション課金で追加）
+
+1サロン1行。Stripe の Subscription の写しを保持し、機能制御に必要な項目だけを同期する。決済・請求の正本は Stripe に置き、請求金額の計算・日割りはアプリ側で行わない。
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| salon_id | bigint | FK → salons.id, Unique（1サロン1契約） |
+| plan | string | lite / standard / pro。Stripe の Price から導出して保存する |
+| status | string | trialing / active / past_due / canceled / unpaid / incomplete / incomplete_expired / paused。Stripe の status を読み替えずそのまま保持する |
+| stripe_customer_id | string | nullable, Unique。1サロン1 Customer。既存の値があれば必ず再利用する |
+| stripe_subscription_id | string | nullable, Unique |
+| stripe_price_id | string | nullable。同期時点の Price。`plan` の導出根拠として保持する |
+| current_period_start | timestamptz | nullable |
+| current_period_end | timestamptz | nullable。解約申請中はこの時刻まで利用可能 |
+| cancel_at_period_end | boolean | default false。解約申請済み。期間終了で canceled へ遷移する |
+| canceled_at | timestamptz | nullable。解約が確定した日時 |
+| ended_at | timestamptz | nullable。契約が終了し利用停止となった日時 |
+| trial_ends_at | timestamptz | nullable |
+| last_stripe_event_at | timestamptz | nullable。**いま保持している契約情報が、いつ時点のものか**。Webhook 起点ならイベントの `created`、プラン変更・解約・Checkout 後の取り直しなど live API 起点なら「その操作を行った時刻」。Stripe は Webhook の順序を保証しないため、これより古い情報は受理（200）するが適用しない（解約後に遅れて届いた `updated` が契約を復活させたり、直前に発生していた通知がプラン変更を巻き戻したりするのを防ぐ） |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- Soft Delete は採用しない。解約後も行を残し、状態は `status` で表現する（削除すると `stripe_customer_id` との対応が失われ、再契約で Customer を二重に作ってしまう）
+- カード番号・有効期限・CVC・請求先は保存しない。入力は Stripe Checkout のホスト画面で完結し Laravel に到達しないため、DBが持つのは `stripe_customer_id` / `stripe_subscription_id` だけである
+- プラン → 利用可能機能の対応表はDBに持たず `config/billing.php` を単一の正とする（`plans` テーブルは作らない）
+- 契約行が無いサロン、`status` が利用不可のサロンは全機能を利用できない（fail closed）。救済用の既定プランは設けない
+- 課金導入前から存在するサロンにはマイグレーションで pro / active をバックフィルする（`BILLING_BACKFILL_PLAN` で変更可。`stripe_*` は null のままとし、初回の Checkout 完了時に紐づける）
+- index: `status`
+
+---
+
+# stripe_webhook_events
+
+Stripe Webhook の受信記録（サブスクリプション課金で追加）
+
+冪等性の担保が唯一の目的。Stripe は同一イベントを複数回送信しうるため、`stripe_event_id` の Unique 制約を二重処理のガードに使う。
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| stripe_event_id | string | Unique。冪等キー（`evt_xxx`）。既に processed / skipped の再送は何もしない |
+| type | string | Stripe のイベント種別（`customer.subscription.updated` など） |
+| status | string | processing / processed / skipped / failed |
+| message | text | nullable。skipped / failed の理由。個人情報を含めない |
+| occurred_at | timestamptz | nullable。Stripe 側のイベント発生時刻 |
+| processed_at | timestamptz | nullable |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- **payload をそのまま保存しない**。カード情報・請求先などの個人情報をDBに残さないため（[ADR-028](../decisions/ADR-028-production-hardening.md) のログ方針に合わせる）
+- `salon_id` を持たない。サロンの特定は payload から解決した契約（`subscriptions`）側で行い、本テーブルは「どのイベントを受け取り済みか」だけを表す
+- 処理中の例外は failed として記録したうえで再スローする（Stripe が再送し、failed の行は再処理される）
+- Soft Delete は採用しない（追記専用の受信台帳）
+- index: `type`
+
+---
+
+# subscription_events
+
+契約状態の変化を追跡する業務監査ログ（サブスクリプション課金で追加）
+
+`stripe_webhook_events` が「Stripe から何を受け取ったか」を記録するのに対し、本テーブルは「契約がどう変わったか」を記録する。
+
+| Column | Type | Note |
+|--------|------|------|
+| id | bigint | PK, Auto Increment |
+| salon_id | bigint | FK → salons.id |
+| subscription_id | bigint | nullable, FK → subscriptions.id, **cascadeOnDelete()** |
+| type | string | started / plan_changed / payment_failed / cancel_requested / cancel_revoked / suspended / ended / status_changed |
+| from_plan | string | nullable。変化前のプラン |
+| to_plan | string | nullable。変化後のプラン |
+| from_status | string | nullable。変化前の契約状態 |
+| to_status | string | nullable。変化後の契約状態 |
+| stripe_event_id | string | nullable。Webhook 起点の場合の `evt_xxx`。管理画面からの操作起点なら null |
+| occurred_at | timestamptz | 記録日時（UTC） |
+| created_at | timestamp | |
+| updated_at | timestamp | |
+
+- `type` の意味は次のとおり。判定順は上から先に一致したもの
+  - suspended — unpaid へ遷移（回収フローが尽きて利用停止）
+  - ended — canceled へ遷移（解約期間の終了）
+  - started — 利用不可の状態から利用可能な状態へ遷移（契約開始・再契約）
+  - plan_changed — 状態は変えずプランだけが変化
+  - status_changed — 上記以外の状態遷移
+  - payment_failed — `invoice.payment_failed` の受信。状態は変えずに記録だけを残す（利用停止は unpaid への遷移 = suspended で表す）
+  - cancel_requested / cancel_revoked — `cancel_at_period_end` の変化。プラン・状態の遷移とは別に記録する
+- プラン・状態のいずれも変化しなかった同期では行を作らない（Stripe の再送で同じ行が積み上がらないようにする）
+- 解約申請（`cancel_at_period_end` = true）は Stripe 上 active のままでプラン・状態が変わらないが、「いつ解約されたか」を追えなくなるため専用の遷移として `cancel_requested` / `cancel_revoked` の行を作る
+- `type` は Enum にしない（監査ログの分類であり、値の追加でアプリの分岐が増えない）
+- Soft Delete は採用しない（追記専用の監査ログ）
+- index: `(salon_id, occurred_at)`
+
+---
+
 # Index
 
 ## customers
@@ -366,6 +465,18 @@ Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計�
 
 - (salon_id, start_at)
 - (user_id, start_at)
+
+## subscriptions
+
+- status
+
+## stripe_webhook_events
+
+- type
+
+## subscription_events
+
+- (salon_id, occurred_at)
 
 ---
 
@@ -409,6 +520,16 @@ Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計�
 - (salon_id, start_at)
 - (user_id, start_at)
 
+## subscriptions
+
+- salon_id — Unique（1サロン1契約。`firstOrCreate` の重複を DB 側で防ぐ）
+- stripe_customer_id — Unique（1サロン1 Customer）
+- stripe_subscription_id — Unique
+
+## stripe_webhook_events
+
+- stripe_event_id — Unique（Webhook の冪等キー。再送の二重処理をDB制約で防ぐ）
+
 ---
 
 # Foreign Keys
@@ -425,6 +546,13 @@ Googleカレンダー上の RB 以外の予定（外部予定）を空き枠計�
 - `google_busy_blocks.google_calendar_connection_id` は **cascadeOnDelete()** とする。
   busy ブロックは接続が読み取った外部予定の写しにすぎず、接続解除後に残す意味がないため
   （接続の解除は物理削除であり、残置すると空き枠を塞ぎ続ける孤児レコードになる）。
+
+- `subscription_events.subscription_id` は **cascadeOnDelete()** とする。
+  同テーブルの `salon_id` は基本方針どおり restrictOnDelete() であり、監査ログの本体キーはサロンである。
+  `subscription_id` は「どの契約の遷移か」を補足する nullable な参照にすぎず、
+  契約行を消したときに参照先を失った行を残す意味がないため。
+  なお `subscriptions` は解約後も行を残す設計であり、通常運用で契約行が削除されることはない
+  （削除は課金導入時のバックフィルを巻き戻す場合に限られる）。
 
 ---
 
@@ -469,6 +597,35 @@ Laravel PHP Enumを採用する。
 - active
 - needs_reconnect — refresh_token の失効・ユーザーによるアクセス取消。同期ジョブはリトライせず打ち切り、UIで再接続を促す
 
+## SubscriptionPlan
+
+`subscriptions.plan`
+
+- lite — 980円/月。顧客管理 / カルテ管理 / 写真管理
+- standard — 1,980円/月。lite に加えて 予約管理 / Googleカレンダー連携 / LINE連携
+- pro — 3,980円/月。standard に加えて AI要約 / 高度な分析
+
+case の宣言順は安い順とする。「その機能を含む最も安いプラン」（アップグレード導線の文言に使う）をこの順序から導出するため。
+
+月額・Stripe Price ID・利用可能機能は Enum に持たせず `config/billing.php` を参照する。
+
+## SubscriptionStatus
+
+`subscriptions.status`。Stripe の status を読み替えずそのまま保持する
+
+- trialing — トライアル中。**利用可**
+- active — 利用中。**利用可**
+- past_due — 初回の支払い失敗〜Stripe の自動再試行中。**利用可**（回収フローの最中は止めない）
+- unpaid — 回収フローが尽きた状態。利用停止
+- canceled — 解約済み。解約申請の期間終了で Stripe が遷移させる。利用停止
+- incomplete — 初回の支払い手続きが未完了。利用停止
+- incomplete_expired — 初回の支払い手続きが期限切れ。利用停止
+- paused — 一時停止中。利用停止
+
+利用可否の判定は `SubscriptionStatus::grantsAccess()` に一本化し、画面・サービスは status を直接比較しない。
+
+解約申請中（`cancel_at_period_end` = true）は Stripe 上 active のままであるため、期間終了までは自然に利用可となる。
+
 ---
 
 # Soft Delete
@@ -484,6 +641,11 @@ Laravel PHP Enumを採用する。
 line_settings は採用しない（連携解除時は物理削除）。
 
 google_calendar_connections / google_busy_blocks も採用しない（接続解除時は物理削除。busy ブロックは cascade delete で消える）。
+
+subscriptions は採用しない。解約後も行を残して `status` で表現するため、そもそも削除が発生しない
+（削除すると `stripe_customer_id` との対応が失われ、再契約時に Customer を二重に作ってしまう）。
+
+stripe_webhook_events / subscription_events も採用しない（受信台帳・監査ログであり、追記専用で更新も削除もしない）。
 
 ---
 
@@ -508,9 +670,13 @@ Salon
 │
 ├── LineSetting（1:1）
 │
-└── GoogleCalendarConnections
+├── GoogleCalendarConnections
+│     │
+│     └── GoogleBusyBlocks（cascade delete）
+│
+└── Subscription（1:1）
       │
-      └── GoogleBusyBlocks（cascade delete）
+      └── SubscriptionEvents（cascade delete）
 ```
 
 - Salon 1 – N GoogleCalendarConnection
@@ -518,6 +684,10 @@ Salon
   - shared モード: 1本のみ（`user_id` は null）
 - User 1 – 1 GoogleCalendarConnection（per_staff モード時のみ。部分 Unique `(salon_id, user_id) WHERE user_id IS NOT NULL` で担保）
 - GoogleCalendarConnection 1 – N GoogleBusyBlock（接続削除時は cascade delete）
+- Salon 1 – 1 Subscription（`subscriptions.salon_id` の Unique で担保。解約後も行は残る）
+- Salon 1 – N SubscriptionEvent（`salon_id` を直接持つため、サロン単位で契約の履歴を追える）
+- Subscription 1 – N SubscriptionEvent（契約削除時は cascade delete）
+- `stripe_webhook_events` はどのエンティティにも属さない（`salon_id` を持たない Stripe イベントの受信台帳）
 
 ---
 
@@ -534,6 +704,8 @@ Salon
 - hasMany(GoogleCalendarConnection)
 - hasMany(GoogleBusyBlock)
 - hasMany(RecordBlockTemplate)
+- hasOne(Subscription)
+- hasMany(SubscriptionEvent)
 
 User
 
@@ -592,6 +764,20 @@ Reservation
 - belongsTo(Menu)
 - belongsTo(User)
 - belongsTo(Salon)
+
+Subscription
+
+- belongsTo(Salon)
+- hasMany(SubscriptionEvent)
+
+SubscriptionEvent
+
+- belongsTo(Salon)
+- belongsTo(Subscription)（nullable）
+
+StripeWebhookEvent
+
+- リレーションを持たない（Stripe イベントの受信台帳）
 
 ---
 
@@ -846,6 +1032,53 @@ RB のカレンダーUI上は「外部予定」という固定表記でグレー
 
 ---
 
+## サブスクリプションと機能制御
+
+契約は `salons` にカラムを足さず、`subscriptions` テーブルへ分離する。
+
+理由
+
+- 契約は Stripe 側で頻繁に書き換わる（状態遷移・期間更新・支払い結果）。更新の頻度も寿命もサロン基本情報とは異なるため、同じ行に混ぜない
+- Stripe 由来の識別子（`stripe_customer_id` / `stripe_subscription_id`）と期間・解約日時を持たせると、サロンの中心テーブルが決済都合のカラムで肥大する
+- 1サロン1契約は `salon_id` の Unique 制約で担保できるため、テーブルを分けても整合性は失われない
+
+プランと利用可能機能の対応表はDBに持たず、`config/billing.php` を単一の正とする（`plans` テーブルは作らない）。
+
+理由
+
+- プラン内容は運営が決める静的な定義であり、サロンごとに異なる値ではない。テナントのデータではなく設定である
+- テーブルにすると、プラン→機能の対応がDBとコード（Stripe Price ID の対応付け）に二重化する
+- 機能の増減が設定ファイルの変更だけで済み、マイグレーションもデータ移行も要らない
+- 判定は `Feature` 単位で行い、プラン名で分岐するコードをアプリ中に散らさない（判定は `EntitlementService` の1箇所に集約する）
+
+`subscriptions` は Soft Delete を採用せず、解約後も行を残す。
+
+理由
+
+- 解約は「契約の消滅」ではなく状態遷移であり、`status` = canceled で表現できる
+- 行を消すと `stripe_customer_id` との対応が失われ、再契約時に同一サロンへ Customer を二重に作ってしまう
+- 解約しても顧客・カルテ・写真は削除しない方針であり、契約行だけを消す理由がない
+
+Stripe Webhook の受信記録（`stripe_webhook_events`）と業務監査ログ（`subscription_events`）は分ける。
+
+理由
+
+- 前者は「どのイベントを受け取り済みか」を表す技術的な台帳であり、`stripe_event_id` の Unique 制約による冪等性の担保が唯一の目的である。1イベントにつき1行で、契約が変わらないイベントも記録する
+- 後者は「契約がどう変わったか」を表す業務ログであり、サロン単位で追跡できる必要がある。Stripe を経由しない操作起点の遷移も同じ形で残す
+- 目的が違うものを1つのテーブルに混ぜると、冪等キーの一意性と「変化だけを残す」という監査ログの性質が両立しない
+
+いずれのテーブルにも Webhook の payload をそのまま保存しない。
+
+理由
+
+- payload にはカード情報の一部・請求先などの個人情報が含まれうる。保存しなければ漏洩しない（[ADR-028](../decisions/ADR-028-production-hardening.md) のログ方針と同じ）
+- 契約の判断に必要な項目はすべて型を確かめて取り出し、`subscriptions` の各カラムへ正規化して保持している
+- 再処理が必要な場合は Stripe から取り直せる（決済・請求の正本は Stripe にあり、DBはその写しにすぎない）
+
+詳細は [ADR-029](../decisions/ADR-029-subscription-billing.md)（サブスクリプション課金・機能制御）。
+
+---
+
 ## 将来の複数店舗対応
 
 MVPでは `users.salon_id` を採用する。
@@ -873,7 +1106,7 @@ MVPでは実装しない。
 - 在庫管理
 - スタッフ権限
 - SaaS化
-- サブスクリプション
+- サブスクリプション — **実装済み**（[ADR-029](../decisions/ADR-029-subscription-billing.md)。`subscriptions` / `stripe_webhook_events` / `subscription_events`）
 - 添付ファイル管理（attachments）
 - API公開
 - 外部サービス連携

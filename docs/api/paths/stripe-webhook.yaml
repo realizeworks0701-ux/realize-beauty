@@ -1,0 +1,55 @@
+# Stripe Webhook（Stripe 専用・prefix /api）
+# path item の servers でルートの /api/v1 を上書きする。
+
+stripeWebhook:
+  servers:
+    - url: http://localhost/api
+      description: Stripe Webhook（Local Development）
+  post:
+    tags:
+      - StripeWebhook
+    summary: Stripe Webhook受信
+    security: []
+    description: >
+      Stripe 専用の受信エンドポイント（全サロン共通の1本・認証なし・throttle なし）。
+      契約状態はフロントの申告ではなくこの経路でのみ同期する。
+      Stripe-Signature の `t` と `v1` を解析し、`{t}.{payload}` の HMAC-SHA256 を
+      STRIPE_WEBHOOK_SECRET で計算して hash_equals で比較する（raw body）。
+      あわせて `t` の乖離を STRIPE_WEBHOOK_TOLERANCE 秒（既定 300）で検査し、リプレイを弾く。
+      **署名検証に失敗した場合は 400 を返す**（LINE / Google Webhook の「常に 200」とは異なる）。
+      Stripe は 4xx を設定不備としてダッシュボードに残すため、
+      Test / Live の秘密鍵の取り違えに気づけるようにする。
+      冪等性は stripe_webhook_events.stripe_event_id の unique 制約で担保し、
+      すでに processed / skipped のイベントの再送は何もせず 200 を返す。
+      処理中の例外は failed として記録したうえで再スローし、500 を返して Stripe に再送させる。
+      処理対象は checkout.session.completed（サロンと stripe_customer_id を紐づけ、
+      Stripe から subscription を取り直して同期）、
+      customer.subscription.created / updated / deleted（契約内容を同期）、
+      invoice.payment_failed（subscription_events に監査ログを記録するのみで利用停止はしない）、
+      invoice.paid（受理のみ。状態は customer.subscription.updated で届く）。
+      それ以外の種別は skipped として 200 を返す。
+      DEV と本番で別の Webhook エンドポイントを登録し、
+      それぞれ Test / Live の STRIPE_WEBHOOK_SECRET を設定する。
+      カード情報・請求先などの個人情報は保存せず、payload をそのまま残さない。
+    operationId: receiveStripeWebhook
+    parameters:
+      - name: Stripe-Signature
+        in: header
+        required: true
+        description: >
+          `t=<UNIX秒>,v1=<HMAC-SHA256(hex)>` 形式の署名ヘッダ
+          （v1 は複数含まれることがあり、いずれかが一致すれば検証成功とする）
+        schema:
+          type: string
+          example: "t=1788400000,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "../components/schemas/subscription.yaml#/StripeWebhookEvent"
+    responses:
+      '200':
+        description: "受信成功（ボディなし。対象外の種別・再送された重複イベントを含む）"
+      '400':
+        description: "署名検証エラー（ボディなし。秘密鍵の不一致・ヘッダ欠落・タイムスタンプ乖離）"

@@ -33,8 +33,9 @@ export interface CustomerSegments {
 
 export interface DashboardSummary {
   kpis: DashboardKpis
-  sales_trend: SalesTrendPoint[]
   today_reservations: Reservation[]
-  popular_menus: PopularMenu[]
-  customer_segments: CustomerSegments
+  /** 以下3件は高度な分析。analytics を含まないプランでは null が返る */
+  sales_trend: SalesTrendPoint[] | null
+  popular_menus: PopularMenu[] | null
+  customer_segments: CustomerSegments | null
 }

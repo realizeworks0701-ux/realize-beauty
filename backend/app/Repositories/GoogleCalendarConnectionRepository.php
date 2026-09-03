@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Enums\Feature;
 use App\Enums\GoogleCalendarConnectionStatus;
 use App\Models\GoogleCalendarConnection;
 use Carbon\Carbon;
@@ -79,6 +80,7 @@ class GoogleCalendarConnectionRepository
     public function listActive(): Collection
     {
         return GoogleCalendarConnection::where('status', GoogleCalendarConnectionStatus::Active->value)
+            ->whereHas('salon.subscription', fn ($query) => $query->granting(Feature::GoogleCalendar))
             ->orderBy('id')
             ->get();
     }
@@ -93,6 +95,7 @@ class GoogleCalendarConnectionRepository
         // channel_id が null の Active 接続は「watch 未開設のまま接続された」状態
         // （接続時の watch は best-effort）。期限切れ間近と同様に張り直し対象へ含める
         return GoogleCalendarConnection::where('status', GoogleCalendarConnectionStatus::Active->value)
+            ->whereHas('salon.subscription', fn ($query) => $query->granting(Feature::GoogleCalendar))
             ->where(function ($query) use ($before) {
                 $query->whereNull('channel_id')
                     ->orWhere('channel_expires_at', '<', $before->copy()->utc());

@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Enums\Feature;
 use App\Repositories\LineSettingRepository;
+use App\Services\Billing\EntitlementService;
 use App\Services\LineEventService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -22,11 +24,12 @@ class ProcessLineEventJob implements ShouldQueue
     public function handle(
         LineSettingRepository $lineSettingRepository,
         LineEventService $lineEventService,
+        EntitlementService $entitlements,
     ): void {
         $setting = $lineSettingRepository->find($this->lineSettingId);
 
-        // 処理前に連携解除された場合はスキップ
-        if ($setting === null) {
+        // 処理前に連携解除された、またはプラン対象外になった場合はスキップ
+        if ($setting === null || ! $entitlements->can($setting->salon_id, Feature::Line)) {
             return;
         }
 
