@@ -41,9 +41,10 @@ DB接続エラーの調査を起点に監査したところ、以下が実機で
 
 **MVP の構成（Render の Docker + `artisan serve`）は維持したまま、設定と境界の防御を入れる。**
 
-- 認証: ログインに throttle（IP 20/分・メール+IP 5/分）。メール単位のみにすると第三者が正規利用者を
-  締め出せるため、必ずIPと組み合わせる。Sanctum トークンに有効期限（`SANCTUM_EXPIRATION`、既定12時間）。
-- プロキシ: `trustProxies(at: '*')`。Render はプロキシ経由でしか到達できないため `'*'` で安全。
+- 認証: ログインに throttle。**メールアドレス単位（20回/5分）を主軸**にし、メール+IP（5回/分）と
+  IP単位（20回/分）を補助として重ねる。Sanctum トークンに有効期限（`SANCTUM_EXPIRATION`、既定12時間）。
+- プロキシ: `trustProxies(at: ['0.0.0.0/0', '::/0'])`。チェーン全体を信頼して X-Forwarded-For の
+  左端＝本来のクライアントIPを採用する。
 - 写真: R2 を `visibility=private` にし、`Photo::url` は private ディスクのときだけ
   `temporaryUrl`（`PHOTO_URL_TTL_MINUTES`、既定60分）を返す。public ディスク（ローカル）は従来どおり。
 - イメージ: `.dockerignore` を追加し `.env`・`vendor/`・`tests/` を除外。`php.ini-production` を有効化し
@@ -77,6 +78,22 @@ Render の PostgreSQL が内部接続でTLSを受けるかを確認できてい�
 
 同時実行の根本解決になるが、Dockerfile とデプロイ構成の作り直しになる。MVP の負荷では
 `PHP_CLI_SERVER_WORKERS` で十分と判断し、移行は将来の課題として残す。
+
+### `trustProxies(at: '*')` で済ませる
+
+当初これを採用したが**本番で機能しなかった**。`'*'` は REMOTE_ADDR（直近の呼び出し元）だけを信頼する
+指定で、`X-Forwarded-For` を右から辿った「最後のホップ」を返す。Render は Cloudflare 配下のため
+この値がリクエストごとに変わり、IPベースのレート制限が全て素通りしていた
+（本番で `x-ratelimit-remaining` が減らないことを実測）。チェーン全体を信頼する指定に改めた。
+
+その代償として左端の値は client 自身が `X-Forwarded-For` を付けると詐称できる。そのため
+ログインの歯止めはIPに依存させず、詐称不可能なメールアドレス単位を主軸に置いている。
+
+### ログインの throttle をメール+IP だけでキー化する
+
+Laravel Breeze の既定はこの形だが、上記のとおり本番ではIPが安定しない。IPを変えながらの
+総当たりが素通りするため、メールアドレス単位の歯止めを主軸にした。第三者が特定アカウントを
+一時的に締め出せる余地は残るが、無制限の総当たりを許すより小さい害と判断した。
 
 ### 役割ベースのアクセス制御を同時に入れる
 

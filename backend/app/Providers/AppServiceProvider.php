@@ -46,12 +46,20 @@ class AppServiceProvider extends ServiceProvider
      */
     private function configureRateLimiting(): void
     {
-        // ログインは未認証で叩けるため総当たりの標的になる。IP単位に加えて
-        // メールアドレス+IP単位でも絞る（メール単位のみだと第三者が正規利用者を締め出せる）。
-        RateLimiter::for('auth-login', fn (Request $request) => [
-            Limit::perMinute(20)->by($request->ip()),
-            Limit::perMinute(5)->by(Str::lower((string) $request->input('email')).'|'.$request->ip()),
-        ]);
+        // ログインは未認証で叩けるため総当たりの標的になる。
+        // プロキシ配下ではクライアントIPが安定せず（Render は Cloudflare 配下）、
+        // X-Forwarded-For は詐称もできるため、IPだけに頼ると歯止めにならない。
+        // 詐称不可能なメールアドレス単位を主軸にし、IP単位は補助として重ねる。
+        RateLimiter::for('auth-login', function (Request $request) {
+            $email = Str::lower((string) $request->input('email'));
+
+            return [
+                // 主軸。IPを変えられても効く。正規利用者の打ち間違いでは到達しない緩さにする
+                Limit::perMinutes(5, 20)->by('login-email:'.$email),
+                Limit::perMinute(5)->by($email.'|'.$request->ip()),
+                Limit::perMinute(20)->by($request->ip()),
+            ];
+        });
 
         RateLimiter::for(
             'public-booking-read',

@@ -15,10 +15,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Render はプロキシ配下で TLS を終端する。信頼しないと $request->ip() が常に
-        // プロキシのIPになり、レート制限が全利用者で1つのバケットを共有してしまう。
-        // X-Forwarded-Proto も見えないため生成される絶対URLが http:// になる。
-        $middleware->trustProxies(at: '*');
+        // Render はプロキシ配下で TLS を終端する。信頼しないと X-Forwarded-Proto が
+        // 見えず、生成される絶対URLが http:// になる。
+        //
+        // at: '*' は REMOTE_ADDR（直近の呼び出し元）だけを信頼する指定で、X-Forwarded-For を
+        // 右から辿った「最後のホップ」を返す。Render は Cloudflare 配下のため、この値は
+        // リクエストごとに変わり、IPベースのレート制限が機能しなかった（本番で実測）。
+        // チェーン全体を信頼して左端＝本来のクライアントIPを採用する。
+        // ただし左端は client が X-Forwarded-For を自分で付けると詐称できるため、
+        // レート制限はIPだけに依存させない（AppServiceProvider の auth-login を参照）。
+        $middleware->trustProxies(at: ['0.0.0.0/0', '::/0']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

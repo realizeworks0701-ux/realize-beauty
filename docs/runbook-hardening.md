@@ -220,12 +220,45 @@ App\Models\Menu::pluck('name', 'id');
 
 ## 5. デプロイ後の確認項目
 
+本番のURL:
+
+| | URL |
+| --- | --- |
+| API | `https://realize-beauty-api.onrender.com` |
+| フロント | `https://realize-beauty.realizeworks-0701.workers.dev` |
+
+### コマンドで確認する分（そのままコピペ可）
+
+```sh
+API=https://realize-beauty-api.onrender.com
+
+# 1. API が起動している → 200
+curl -s -o /dev/null -w '%{http_code}\n' "$API/up"
+
+# 2. PHPバージョンが漏れない → 何も出力されなければOK
+curl -sI "$API/up" | grep -i x-powered-by
+
+# 3. ログイン throttle → 途中から 429 が並べばOK
+#    5回目で 429 になればIP単位も効いている。20回超で初めて 429 なら
+#    メール単位の歯止めだけが効いている＝クライアントIPが安定していない
+for i in $(seq 1 22); do
+  curl -s -o /dev/null -w '%{http_code} ' -X POST "$API/api/v1/auth/login" \
+    -H 'Content-Type: application/json' -H 'Accept: application/json' \
+    -d '{"email":"nobody@example.com","password":"WrongPassword123"}'
+done; echo
+
+# 4. IPベースの制限が効いているか（remaining が単調に減ればOK。
+#    同じ値のままなら X-Forwarded-For の解決が壊れている）
+for i in 1 2 3; do
+  curl -sI "$API/api/public/v1/salons/dummyslug0000000" | grep -i ratelimit-remaining
+done
+```
+
+### 画面・ダッシュボードで確認する分
+
 | 確認 | 方法 | 期待値 |
 | --- | --- | --- |
-| API が起動している | `curl -s -o /dev/null -w '%{http_code}' https://<api>/up` | `200` |
-| PHPバージョンが漏れない | `curl -sI https://<api>/up \| grep -i x-powered-by` | 出力なし |
-| ログが Render に出る | `realize-beauty-api` → Logs | JSON ではなくテキストのログ行が流れる |
-| ログイン throttle | 誤ったパスワードで6回連続ログイン | 5回目以降 `429` |
+| ログが Render に出る | `realize-beauty-api` → Logs | テキストのログ行が流れる（従来は何も出なかった） |
 | 予約ページURL | 管理画面 → LINE設定 → 予約ページURL | フロントのドメイン（`.workers.dev`）で始まる |
 | 公開予約ページ | 予約ページURLをシークレットウィンドウで開く | メニュー・空き枠が表示される（404/HTMLパースエラーが出ない） |
 | 写真アップロード | 5MB程度の写真をアップロード | 成功する（従来は2MB超で「画像が必要です」エラー） |

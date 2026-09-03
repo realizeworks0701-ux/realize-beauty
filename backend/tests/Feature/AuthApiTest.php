@@ -71,6 +71,29 @@ class AuthApiTest extends TestCase
         ])->assertStatus(429);
     }
 
+    public function test_login_throttle_holds_even_when_the_client_ip_changes(): void
+    {
+        // 本番はプロキシ配下でクライアントIPが安定しない。IPに依存しない歯止めが必要。
+        User::factory()->create([
+            'email' => 'staff@example.com',
+            'password' => Hash::make('secret123'),
+        ]);
+
+        foreach (range(1, 20) as $i) {
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.$i])
+                ->postJson('/api/v1/auth/login', [
+                    'email' => 'staff@example.com',
+                    'password' => 'wrong',
+                ]);
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->postJson('/api/v1/auth/login', [
+                'email' => 'staff@example.com',
+                'password' => 'wrong',
+            ])->assertStatus(429);
+    }
+
     public function test_login_throttle_does_not_lock_out_other_accounts(): void
     {
         User::factory()->create([
