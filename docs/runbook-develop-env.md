@@ -25,14 +25,19 @@
 
 ## STEP 0. 本番を守る（最優先・単独で完了させる）
 
-`render.yaml` は Web サービスと PostgreSQL の両方に `plan: free` と書いてあるが、実際は両方とも有料プラン。Render は **Blueprint がダッシュボードの設定を上書きする**と明記しており、かつ**同期は差分ではなくファイル全体を適用**する。Auto Sync は既定 ON、既存 Blueprint には同期前の差分確認画面がない。
+> **✅ コード側は対応済み（`90a5dbb` / `main` にマージ済み）。** `render.yaml` から本番リソースの
+> `plan` 行を削除し、`APP_LOCALE: ja` も同じコミットで入っている。以下は**なぜその対応が必要だったか**の
+> 記録として残す。ダッシュボード側の 1.〜4.（Auto Sync の停止と Generate Blueprint による突き合わせ）は
+> **今後 `render.yaml` を触るときに毎回効く手順**なので、読み飛ばさないこと。
+
+`render.yaml` は Web サービスと PostgreSQL の両方に `plan: free` と書いてあったが、実際は両方とも有料プラン。Render は **Blueprint がダッシュボードの設定を上書きする**と明記しており、かつ**同期は差分ではなくファイル全体を適用**する。Auto Sync は既定 ON、既存 Blueprint には同期前の差分確認画面がない。
 
 > "if any of those changes conflict with configuration defined in the Blueprint, they're overwritten the next time you sync your Blueprint."
 > — [render.com/docs/infrastructure-as-code](https://render.com/docs/infrastructure-as-code)
 
 つまり **`render.yaml` を変更した push が1回走るだけで、本番の Postgres が 256MB に降格し、数分停止し、「作成30日で失効→猶予14日→削除」の経路に乗る。**
 
-作業ツリーには既に `render.yaml` の未コミット変更（`APP_LOCALE: ja` の追加）がある。**これを push する前に以下を終わらせること。**
+当時は作業ツリーに `render.yaml` の未コミット変更（`APP_LOCALE: ja` の追加）があり、**それを push する前に以下を終わらせる**必要があった。`render.yaml` を変更するときは毎回同じ確認をする。
 
 1. Render ダッシュボード → 該当 Blueprint → **Settings → Auto Sync を No** にする。
 2. ダッシュボードで `realize-beauty-api` と `realize-beauty-db` を選択 → **Generate Blueprint** → ダウンロード。
@@ -119,6 +124,16 @@ cd backend && php artisan key:generate --show
 
 こちらが `render.yaml` に develop サービスを追記して push したあと、あなたの作業。
 
+> **`render.yaml` は Blueprint が追跡しているブランチ（通常 `main`）に載らないと効かない。** feature ブランチを
+> `develop` にマージしただけでは `realize-beauty-api-dev` は作られない。Blueprint の Settings でどのブランチを
+> 追跡しているかを確認し、そのブランチへマージしてから Manual Sync すること。
+
+> **リージョンを本番と揃える。** `render.yaml` に `region` は書いていない（本番の現在のリージョンが
+> ここからは確認できず、かつ**リージョンは作成後に変更できない**ため、書き違えると作り直しになる）。
+> ダッシュボードで `realize-beauty-api` のリージョンを確認し、develop サービスも**同じリージョン**で作ること。
+> STEP 1 の Neon プロジェクトのリージョン（AWS Singapore を選ぶ前提で書いてある）も、これに合わせる。
+> 揃っていないと DB との往復が1リクエストごとに効いてくる。
+
 1. Blueprint ページで **Manual Sync** を実行する。`realize-beauty-api-dev` が作成される。
 2. **初回デプロイは失敗する。** 環境変数が空でコンテナが起動できないため。想定内なのでそのまま進む。
 3. サービスの **Environment** タブで、`sync: false` の変数をすべて入力する。
@@ -197,7 +212,21 @@ cd backend && php artisan key:generate --show
 >
 > 静かに間違った先へ出るのではなく、その場で落ちる。仮に `env.production` の節を足せば通るようになるが、そのときは wrangler が env 名から `realize-beauty-production` という**別の Worker 名を導出する**。節を足さず、`--env=""` を使うこと。
 
-ローカルからの手動デプロイも同じで、本番は `npm run deploy`（= `wrangler deploy --env=""`）、develop は `npm run deploy:develop`（= `wrangler deploy --env develop`）を使う。
+ローカルからの手動デプロイも同じで、本番は `npm run deploy`、develop は `npm run deploy:develop` を使う。どちらも `npm run build` を実行してから `wrangler deploy` する（`dist/` は最後にビルドしたものが残っているだけで、どの環境向けかを持たない）。
+
+> **本番へ出すときは、本番のビルド変数を与えて実行すること。** `VITE_API_BASE_URL` と `VITE_ENV_LABEL` は
+> ビルド時にバンドルへ焼き込まれるため、スクリプトが `npm run build` を挟んでも**値までは面倒を見ない**。
+> この STEP の 1. では develop 用の値でビルドしているので、同じシェルでそのまま `npm run deploy` すると
+> **develop 向けのバンドルが本番 Worker に出る**（`DEVELOP` バッジが本番に出て、API も develop を向く）。
+>
+> ```sh
+> cd frontend
+> VITE_API_BASE_URL=https://<本番 API>/api/v1 npm run deploy    # VITE_ENV_LABEL は渡さない（バッジを出さない）
+> VITE_API_BASE_URL=https://<develop API>/api/v1 VITE_ENV_LABEL=DEVELOP npm run deploy:develop
+> ```
+>
+> ふだんの本番デプロイは Workers Builds（ビルド変数がダッシュボードに入っている）に任せ、
+> ローカルからの手動デプロイは復旧時などに限るのが安全。
 
 ---
 
@@ -264,7 +293,9 @@ DB_URL='postgresql://…@ep-xxxx.ap-southeast-1.aws.neon.tech/realize_beauty_dev
   php artisan demo:reset
 ```
 
-コマンドは実行前に**接続先のホストとデータベース名を表示し、データベース名の入力を求める**。`APP_ENV` ではなく接続先の実体を見ているので、`DB_URL` を本番に向け違えた場合もここで止まる。
+コマンドは実行前に**接続先のホストとデータベース名を表示し、そのデータベース名の入力を求める**。`APP_ENV` ではなく接続先の実体を見ている。
+
+ただし、この確認が止められるのは**打ち間違い**であって、向け違えそのものではない。対話実行では期待値（接続先のデータベース名）が入力を求める2行上に表示されるため、`DB_URL` を本番へ向けたまま表示どおりに入力すれば、そのまま通る。`--force` を使う場合だけは、`--expect-database` に**自分で**書いた名前が接続先と一致しなければ止まる（CI やスクリプトから叩くときはこちらを使う）。**接続先が正しいことは、実行者が表示されたホスト名で確かめること。**
 
 - デモの前に毎回実行する運用にする。シーダーは実行時の日付で予約を作るため、これで「本日の予約」が現在に戻る。
 - 見込み客が Stripe の契約を完了すると、次の人は「すでに契約中です」で弾かれる。**人が変わるたびに実行する。**
@@ -308,6 +339,12 @@ STRIPE_PRICE_LITE=price_… STRIPE_PRICE_STANDARD=price_… STRIPE_PRICE_PRO=pri
 - [ ] 戻ってきた画面で契約状態が反映されている
 - [ ] 「お支払い情報の変更」でカスタマーポータルが開く（開かなければ STEP 3-3 の保存漏れ）
 - [ ] 公開予約ページから予約でき、develop の LINE チャネルに通知が届く
+
+> **この最後の1項目は本番と挙動が違う。** develop だけ `QUEUE_CONNECTION=deferred` で、LINE 通知と
+> Google カレンダー連携のジョブがレスポンス送出後に実際に実行される。本番は `database` のままで
+> キューワーカーが居ないため、同じジョブは `jobs` テーブルに積まれるだけで**実行されない**。
+> つまり develop で通っても本番で通ったことにはならない（この点だけ develop のほうが機能する）。
+> 本番のキューワーカーは未対応の課題として残っている（[ADR-031](decisions/ADR-031-two-environment-deployment.md) 参照）。
 
 ### 見込み客に見せる前の確認
 
