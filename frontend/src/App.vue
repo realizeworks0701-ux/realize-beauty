@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import AppLayout from '@/layouts/AppLayout.vue'
+import EnvBadge from '@/components/common/EnvBadge.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -27,6 +28,7 @@ watchEffect(() => {
 </script>
 
 <template>
+  <EnvBadge />
   <Toast position="top-right" />
   <ConfirmDialog />
   <RouterView v-if="isPublic" />
