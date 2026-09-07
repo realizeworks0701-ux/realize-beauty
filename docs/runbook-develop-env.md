@@ -39,10 +39,35 @@
 
 当時は作業ツリーに `render.yaml` の未コミット変更（`APP_LOCALE: ja` の追加）があり、**それを push する前に以下を終わらせる**必要があった。`render.yaml` を変更するときは毎回同じ確認をする。
 
-1. Render ダッシュボード → 該当 Blueprint → **Settings → Auto Sync を No** にする。
-2. ダッシュボードで `realize-beauty-api` と `realize-beauty-db` を選択 → **Generate Blueprint** → ダウンロード。
-3. ダウンロードした YAML とリポジトリの `render.yaml` を見比べ、**`plan` 以外にずれている項目がないか**確認する。特に `region` / `diskSizeGB` / `numInstances` / `ipAllowList` / `connectionPool` / `storageAutoscalingEnabled` / `postgresMajorVersion`。
-4. ずれがあれば教えてほしい。`plan` はこちらで**行ごと削除**する（既存リソースは現行プランを保持する、と Blueprint 仕様に明記がある。実 ID を書くより安全）。実 ID を書きたい場合は `realize-beauty-api` と `realize-beauty-db` のプラン ID を教えてほしい。
+**Auto Sync を止める:**
+
+1. `https://dashboard.render.com/blueprints` を開く（左ペインの **Blueprints**。**Projects** のすぐ下、**Environment groups** の上にある）。
+   - **ここが空なら、サービスは Blueprint 管理下にない。** その場合 `render.yaml` を push しても何も起きず、develop サービスも作られない。先へ進む前にこの前提を確認すること。
+2. Blueprint 名をクリックする。**作成時に入力した名前であり、リポジトリ名とは限らない。** 見覚えがなければリポジトリで照合する。
+3. その Blueprint の **Settings** を開く。
+4. **Auto Sync** セクション（説明文は "Automatically sync changes to your Blueprint file? Select "No" to handle syncs manually."）。
+5. 鉛筆の **Edit** を押すと編集可能になる。トグルではなく**ドロップダウン**（Yes / No）。**No** にして **Save changes**。
+
+**実設定との差分を取る:**
+
+6. `https://dashboard.render.com`（左ペインの **Projects**）を開き、**Ungrouped Services** のテーブルまでスクロールする。`render.yaml` に `projects:` を書いていないため、2つのリソースはここに並ぶ。
+7. 各行の**左端のチェックボックス**で `realize-beauty-api` と `realize-beauty-db` を選ぶ。
+8. 選択すると**画面下部に黒いバー**が出る: `N services selected: [Move] [Generate Blueprint] [Suspend]`。**Generate Blueprint** を押してダウンロードまたはコピーする。
+9. ダウンロードした YAML とリポジトリの `render.yaml` を見比べ、**`plan` 以外にずれている項目がないか**確認する。特に `region` / `diskSizeGB` / `numInstances` / `ipAllowList` / `connectionPool` / `storageAutoscalingEnabled` / `postgresMajorVersion`。
+   - 生成される YAML は環境変数の**名前だけで値を含まず**、すべて `sync: false` になる。値の差分は見られない。
+10. ずれがあれば相談すること。`plan` は**行ごと削除**してある（既存リソースは現行プランを保持する、と Blueprint 仕様に明記がある。実 ID を書くより安全）。
+
+**CLI で代替する（ダッシュボードを触らずに済む）:**
+
+`brew install render` で入る Render CLI には、push 前に `render.yaml` を**実際のワークスペースに対して**検証するコマンドがある。YAML 構文とスキーマに加え、プラン名やリージョンの妥当性、**既存リソースとの衝突**、そして**ブランチの存在**まで見る。
+
+```sh
+render login
+render blueprints validate render.yaml
+```
+
+ブランチ未作成のときの出力はドキュメントに例がある: `services[0].branch (line 19, column 5): branch prod could not be found`。
+失敗時は非ゼロで終了する。CLI v2.7.1 以降が必要。
 
 > **注意**: 新規に作る develop サービスの方は `plan: free` を**明示する**。新規リソースで `plan` を省略すると既定の `0.5c-512mb`（$7/月）になる。
 
@@ -50,16 +75,54 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 
 ---
 
-## STEP 0.5. GitHub のブランチ保護
+## STEP 0.5. push の順序と GitHub のブランチ保護
 
-`develop` ブランチはこちらで作成して push する。そのうえで、GitHub 側の設定はあなたの作業になる。
+**順序を守ること。ブランチ保護は最後。**
 
-1. リポジトリ → Settings → Branches → **`main` にブランチ保護ルールを追加**する。
-   - Require a pull request before merging
-   - Require status checks to pass（`backend` と `frontend` のジョブを選ぶ）
-2. 同様に `develop` にも同じルールを付ける（任意）。
+1. **`develop` を先に push する。**
 
-直近15コミットが `main` に直接入っており、[ADR-010](decisions/ADR-010-git-workflow.md) と [CONTRIBUTING.md](../CONTRIBUTING.md) の「main へ直接コミットしない」が実際には守られていない。2環境に分けると、`main` への直接コミットは**本番への直接デプロイ**を意味するようになる。
+   ```sh
+   git push -u origin develop
+   ```
+
+   Blueprint が追跡しているのは `main` なので、これでは**同期は走らない**。目的は、Render が
+   `branch: develop` を解決しにくる前に ref を存在させること。**ブランチの存在は Render 側で実際に
+   検証される** — ドキュメントのエラー例が `services[0].branch (line 19, column 5): branch prod could not be found`。
+
+2. **`main` を push する。**
+
+   ```sh
+   git push origin main
+   ```
+
+   **Blueprint 同期を起こすのはこの push だけ**（正確には「追跡ブランチへの push のうち Blueprint ファイルを
+   変更したもの」）。`realize-beauty-api-dev` が作られる。既存の本番サービスも定義を変更した扱いになるため
+   再デプロイされる。
+
+3. **両ブランチの CI が green になるのを待つ。** これは礼儀ではなく門。壊れた `main` を直 push で
+   修正できる最後の瞬間であり、次のステップの前提でもある。
+
+4. **STEP 5 に進んで develop サービスの環境変数を入れる。** `render.yaml` の修正が要ると分かった場合、
+   まだ直 push で直せる。
+
+5. **最後に `main` の保護を設定する。** リポジトリ → Settings → Rules → Rulesets → New branch ruleset。
+   - Target: `main` のみ
+   - **Require a pull request before merging**
+   - **Require status checks to pass** — 選ぶのは **`Backend (Laravel)`** と **`Frontend (Vue)`**。
+     `CI` でも `backend` でもなく、ジョブの `name:` の値。
+   - Bypass list は意識して決める。空なら自分も PR 必須になる。
+
+> **保護を先にかけると push が拒否されうる。** 方式で挙動が違う。
+> **Classic branch protection rule** は「Do not allow bypassing the above settings」が既定 OFF で、
+> リポジトリ管理者は免除される。**Ruleset**（今の GitHub UI が誘導する方）は bypass リストが既定で空で、
+> 管理者も免除されない。後者で先に保護をかけると、溜まっているコミットの直 push が弾かれる。
+>
+> **必要ステータスチェックの選択肢には、過去7日に成功したチェックしか出ない。** CI がしばらく走って
+> いないと、そもそも選べない。ステップ3で green にしてから設定すること。
+
+[ADR-010](decisions/ADR-010-git-workflow.md) と [CONTRIBUTING.md](../CONTRIBUTING.md) は「main へ直接
+コミットしない」と定めているが、実際には守られてこなかった。2環境に分けた今、`main` への直接コミットは
+**本番への直接デプロイ**を意味する。
 
 ---
 
@@ -216,8 +279,13 @@ cd backend && php artisan key:generate --show
 
 > **本番へ出すときは、本番のビルド変数を与えて実行すること。** `VITE_API_BASE_URL` と `VITE_ENV_LABEL` は
 > ビルド時にバンドルへ焼き込まれるため、スクリプトが `npm run build` を挟んでも**値までは面倒を見ない**。
-> この STEP の 1. では develop 用の値でビルドしているので、同じシェルでそのまま `npm run deploy` すると
-> **develop 向けのバンドルが本番 Worker に出る**（`DEVELOP` バッジが本番に出て、API も develop を向く）。
+> ビルド時の値はスクリプトの中には入っていない。この STEP の 1. のようにコマンドの前置きで
+> 環境変数を渡している場合、同じシェルでそのまま `npm run deploy` しても値は引き継がれず、
+> **`VITE_API_BASE_URL` も `VITE_ENV_LABEL` も未設定のバンドルが本番 Worker に出る**。
+> API のベース URL は同一オリジンの `/api/v1` にフォールバックし、Worker には API がないので
+> 公開予約ページも管理画面も動かない（[apiClient.ts:8](../frontend/src/services/apiClient.ts#L8)）。
+> 逆に `export` していた場合は develop 向けのバンドルがそのまま本番に出る。どちらにしても事故なので、
+> **デプロイ先に対応する変数を毎回明示的に渡す**。
 >
 > ```sh
 > cd frontend
