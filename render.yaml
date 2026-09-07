@@ -148,3 +148,117 @@ services:
         sync: false
       - key: STRIPE_PRICE_PRO
         sync: false
+
+  # --- develop 環境（ADR-031） -------------------------------------------
+  # 見込み客に見せるデモ兼、先行検証用。本番とは DB・R2・Stripe・LINE・Google の
+  # すべてを分ける。DB は Neon（無料プラン・期限なし）を DB_URL で参照するため、
+  # このファイルの databases: には追加しない。
+  - type: web
+    name: realize-beauty-api-dev
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # 新規リソースは plan を省略すると 0.5c-512mb（有料）になる。ここは明示する。
+    plan: free
+    branch: develop
+    healthCheckPath: /up
+    envVars:
+      - key: APP_NAME
+        value: Realize Beauty (develop)
+      # production 以外にすることが Stripe テストモードの前提条件。
+      # StripeClient::assertModeMatchesEnvironment() が Live キーを拒否する側に倒れる。
+      # 副作用として Laravel の ConfirmableTrait も無効になり、migrate:fresh /
+      # db:wipe / db:seed が確認なしで走る点に注意（demo:reset が独自ガードを持つ）。
+      - key: APP_ENV
+        value: staging
+      # staging でも既定は false だが、見込み客に見せる環境なので明示する
+      - key: APP_DEBUG
+        value: false
+      - key: APP_LOCALE
+        value: ja
+      # 本番とは必ず別の値にする。鍵を分けておけば、万一本番のDBダンプを入れても
+      # LINE/Google の暗号化列を復号できない（制約ではなく安全装置）
+      - key: APP_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: SALON_TIMEZONE
+        value: Asia/Tokyo
+      - key: PHP_CLI_SERVER_WORKERS
+        value: '4'
+      - key: SANCTUM_EXPIRATION
+        value: '720'
+      - key: PHOTO_URL_TTL_MINUTES
+        value: '60'
+
+      # DB は Neon。接続文字列は必ず直接エンドポイント（ホスト名に -pooler を
+      # 含まないもの）を使う。アプリがセッションで search_path と時刻を設定するため。
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        sync: false
+      # DB_URL のクエリ文字列と config の既定値(prefer)が競合しないよう明示する
+      - key: DB_SSLMODE
+        value: require
+
+      # キューワーカーが存在しないため、既定の database ドライバではジョブが
+      # jobs テーブルに溜まったまま実行されない。sync はジョブの例外が
+      # DB::transaction の外へ抜けて予約APIを 500 にするため使えない
+      # （PublicBookingService.php:135）。deferred はレスポンス送出後に実行する。
+      - key: QUEUE_CONNECTION
+        value: deferred
+
+      # develop フロント（Worker）のオリジン。未設定なら全拒否（フェイルクローズ）
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      # 本番バケットは共用しない。R2 はバケット単位の課金がないため費用は変わらず、
+      # プレフィックス分離は未設定時に fail-open して本番のキー空間に合流する。
+      - key: FILESYSTEM_DISK
+        value: r2
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+
+      # 本番とは別のキーにする（AI要約はリクエスト内で同期的に課金される）
+      - key: OPENAI_API_KEY
+        sync: false
+
+      # develop 専用の OAuth クライアント。
+      # {APP_URL}/api/v1/google-calendar/callback を Google Cloud に登録すること。
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # Stripe は named sandbox の Test Mode。sk_test_ / pk_test_ を入れる。
+      # Live キーを入れると assertModeMatchesEnvironment() が例外で止める。
+      - key: STRIPE_SECRET
+        sync: false
+      - key: STRIPE_KEY
+        sync: false
+      # {APP_URL}/api/webhooks/stripe に対して sandbox 側で発行した値。
+      # 本番の whsec を貼ると Live イベントが develop の DB に適用される。
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Test Mode 側の Price ID。Live のものとは別で、接頭辞では判別できない。
+      - key: STRIPE_PRICE_LITE
+        sync: false
+      - key: STRIPE_PRICE_STANDARD
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
