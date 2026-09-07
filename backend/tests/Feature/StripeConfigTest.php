@@ -149,4 +149,36 @@ class StripeConfigTest extends TestCase
             ->doesntExpectOutputToContain('sk_test_dummy')
             ->assertSuccessful();
     }
+
+    /**
+     * 設定不備をお客さんの画面に英語の "Server Error" として出さない。
+     * 例外の message は設定内容を含むため、利用者向けには一般化した文言を返す。
+     */
+    public function test_a_config_error_is_returned_as_a_japanese_message(): void
+    {
+        config(['billing.stripe.secret' => 'sk_live_dummy']);
+        $this->actingAsSalonUser(Salon::factory()->withoutSubscription()->create());
+
+        $response = $this->postJson('/api/v1/subscription/checkout', ['plan' => 'lite']);
+
+        $response->assertStatus(503);
+        $this->assertSame(
+            'お支払い機能の設定に不備があります。管理者にお問い合わせください。',
+            $response->json('message'),
+        );
+    }
+
+    public function test_a_stripe_api_error_is_returned_as_a_japanese_message(): void
+    {
+        Http::fake(['api.stripe.com/*' => Http::response(['error' => ['message' => 'nope']], 400)]);
+        $this->actingAsSalonUser(Salon::factory()->withoutSubscription()->create());
+
+        $response = $this->postJson('/api/v1/subscription/checkout', ['plan' => 'lite']);
+
+        $response->assertStatus(502);
+        $this->assertSame(
+            'お支払いサービスに接続できませんでした。時間をおいて再度お試しください。',
+            $response->json('message'),
+        );
+    }
 }
