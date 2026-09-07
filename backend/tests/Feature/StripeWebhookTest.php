@@ -606,6 +606,68 @@ class StripeWebhookTest extends TestCase
         $this->assertSame(SubscriptionPlan::Standard, $salon->subscription()->firstOrFail()->plan);
     }
 
+    // ---- Live / Test の取り違え ------------------------------
+
+    /**
+     * 本番の whsec を develop に貼るなどの取り違えで、Live のイベントが
+     * テストモードの環境へ適用されないようにする。
+     * 署名は通ってしまうため、livemode がモード分離の最後の砦になる。
+     */
+    public function test_skips_an_event_whose_livemode_does_not_match_the_secret_key(): void
+    {
+        $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
+        $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
+
+        [$payload, $signature] = $this->signedWebhook(
+            'customer.subscription.updated',
+            $this->stripeSubscription([
+                'status' => 'active',
+                'items' => ['data' => [['id' => 'si_test_1', 'price' => ['id' => self::PRICE_PRO]]]],
+            ]),
+            livemode: true,
+        );
+
+        $this->postWebhook($payload, $signature)->assertOk();
+
+        $this->assertDatabaseHas('stripe_webhook_events', [
+            'stripe_event_id' => 'evt_test_1',
+            'status' => 'skipped',
+        ]);
+
+        // Lite のまま。Live のイベントがテストモードの環境へ適用されていない
+        $this->assertSame(SubscriptionPlan::Lite, $salon->subscription()->firstOrFail()->plan);
+    }
+
+    public function test_skips_an_event_without_a_livemode_field(): void
+    {
+        $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
+        $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
+
+        $payload = json_encode([
+            'id' => 'evt_test_no_livemode',
+            'object' => 'event',
+            'type' => 'customer.subscription.updated',
+            'created' => Carbon::now()->utc()->getTimestamp(),
+            'data' => ['object' => $this->stripeSubscription([
+                'status' => 'active',
+                'items' => ['data' => [['id' => 'si_test_1', 'price' => ['id' => self::PRICE_PRO]]]],
+            ])],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        $timestamp = Carbon::now()->utc()->getTimestamp();
+        $signature = 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$payload, self::WEBHOOK_SECRET);
+
+        $this->postWebhook($payload, $signature)->assertOk();
+
+        $this->assertDatabaseHas('stripe_webhook_events', [
+            'stripe_event_id' => 'evt_test_no_livemode',
+            'status' => 'skipped',
+        ]);
+
+        // Lite のまま。livemode が欠けたイベントが適用されていない
+        $this->assertSame(SubscriptionPlan::Lite, $salon->subscription()->firstOrFail()->plan);
+    }
+
     private function postWebhook(string $payload, string $signature)
     {
         return $this->call(

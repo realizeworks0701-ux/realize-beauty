@@ -53,6 +53,25 @@ class StripeWebhookService
             return;
         }
 
+        // 署名は通ったが、モードが食い違うイベント。本番の whsec を別環境に貼るなどの
+        // 取り違えでしか起きないが、起きた場合はサロンIDが両DBとも1始まりのため
+        // metadata.salon_id が必ず「どれかのサロン」に当たってしまう。
+        // 監査のため claim 後に skipped として記録する。
+        if (! $this->modeMatches($event)) {
+            Log::warning('Stripe webhook skipped for livemode mismatch', [
+                'event_id' => $eventId,
+                'type' => $type,
+                'event_livemode' => $event['livemode'] ?? null,
+            ]);
+
+            $this->webhookEventRepository->markSkipped(
+                $eventId,
+                'イベントの livemode が STRIPE_SECRET のモードと一致しません。',
+            );
+
+            return;
+        }
+
         try {
             $handled = $this->dispatch($type, $event['data']['object'] ?? [], $eventId, $occurredAt);
         } catch (Throwable $e) {
@@ -66,6 +85,24 @@ class StripeWebhookService
         $handled
             ? $this->webhookEventRepository->markProcessed($eventId)
             : $this->webhookEventRepository->markSkipped($eventId, '対象外のイベント種別、または該当するサロンが見つかりませんでした。');
+    }
+
+    /**
+     * Stripe の Event は常に livemode を持つ。欠けているものは正規のイベントではない。
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function modeMatches(array $event): bool
+    {
+        if (! isset($event['livemode']) && ! array_key_exists('livemode', $event)) {
+            return false;
+        }
+
+        if (! is_bool($event['livemode'])) {
+            return false;
+        }
+
+        return $event['livemode'] === str_starts_with((string) config('billing.stripe.secret'), 'sk_live_');
     }
 
     /**
