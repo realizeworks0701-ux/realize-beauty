@@ -125,7 +125,7 @@ Google カレンダーの変更
 - Google OAuth は認可コードフローとする。要求スコープは `https://www.googleapis.com/auth/calendar.events`（機密スコープ）と、カレンダー一覧取得用の `https://www.googleapis.com/auth/calendar.calendarlist.readonly` の2つのみとする
 - `access_type=offline` + `prompt=consent` を付与し、refresh_token を確実に取得する
 - `google_account_email` は **`calendarList` の `primary` エントリの `id`**（= アカウントのメールアドレス）から取得する。宣言スコープ（`calendar.events` + `calendar.calendarlist.readonly`）ではユーザー情報を直接取得できないが、そのためだけに `userinfo.email` / `openid` スコープを**追加しない**（要求スコープを増やすと Google 審査の正当性説明が重くなるうえ、表示用の値のために機微情報の要求範囲を広げることになる）
-- SPA（Cloudflare Pages）と API（Render）は**別オリジン**であることを前提とする。`redirect_uri` は client_secret をサーバ側で安全に扱うため **API 側**の `{API_URL}/api/v1/google-calendar/callback` を Google Cloud Console に登録する
+- SPA（Cloudflare Workers）と API（Render）は**別オリジン**であることを前提とする。`redirect_uri` は client_secret をサーバ側で安全に扱うため **API 側**の `{API_URL}/api/v1/google-calendar/callback` を Google Cloud Console に登録する
 - コールバックは Google からのブラウザリダイレクトであり Bearer トークンを持たない。このため接続開始時に推測不能なランダム値の `state` を発行し、**キャッシュに `state → {salon_id, user_id, mode}` を TTL 10分で保存**して文脈を引き継ぐ。state 不一致・期限切れはエラーとする
 - 交換完了後、API は SPA へ 302 リダイレクトする（成功 `{FRONTEND_URL}/settings/google-calendar?connected=1` / 失敗 `?error=...`）。このため **`FRONTEND_URL` 相当の設定値を新設する**（config + `.env.example`。フェーズ2では未整備）
 - 接続完了時に、対象カレンダーへの watch チャネル開設と初回同期ジョブの投入をあわせて行う。初回同期は**受信（全同期による busy 取り込み）と送信（同期窓内の既存予約の書き出し）の両方**を投入する（送信側を投入しないと、接続前に登録済みの未来の予約が Google に一切現れない）

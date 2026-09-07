@@ -50,10 +50,12 @@ RealizeWorksでは以下の5つを開発原則とします。
 
 - GitHub
 - GitHub Actions
+- Render（Laravel API / PostgreSQL）
+- Cloudflare Workers Static Assets（フロント）
 - Cloudflare R2
+- Neon（develop 環境の PostgreSQL）
 - OpenAI API
 - Stripe
-- Laravel Cloud（予定）
 
 ---
 
@@ -80,9 +82,13 @@ realize-beauty/
 # Git Flow
 
 ```
-main
+feature/* → develop → main
+```
+
+```
+main        本番環境（realize-beauty-api / Worker realize-beauty）
 │
-develop
+develop     develop 環境（デモ兼先行検証。realize-beauty-api-dev / Worker realize-beauty-develop）
 │
 ├── feature/auth
 ├── feature/customer
@@ -93,10 +99,14 @@ develop
 
 ## Rules
 
-- `main` は常にリリース可能な状態を維持する
+- `main` は常にリリース可能な状態を維持する。**`main` への直接コミットは本番への直接デプロイ**
 - 日常開発は `develop`
-- 新機能は `feature/*`
+- 新機能は `feature/*`（`develop` から切り、`develop` へ戻す）
+- 本番へは `develop → main` の Pull Request で出す
 - Pull Request を経由してマージする
+
+ブランチ運用の正典は [ADR-010](docs/decisions/ADR-010-git-workflow.md)、
+ブランチと環境の対応は [ADR-031](docs/decisions/ADR-031-two-environment-deployment.md)。
 
 ---
 

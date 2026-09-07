@@ -23,8 +23,16 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_DATABASE" value="testing"/>
-        <env name="DB_URL" value=""/>
+        <!--
+            DB_DATABASE / DB_URL は <env> ではなく <server> で上書きすること。
+            <env> は $_ENV と putenv にしか書かないが、Laravel の Env は $_SERVER を
+            最初に読む。シェルで export した値は $_SERVER に入るため、<env> では
+            （force="true" を付けても）打ち消せない。
+            打ち消せないと、DB_URL を本番/develop へ向けたシェルのまま `artisan test` を
+            叩いた瞬間に RefreshDatabase の migrate:fresh がその DB を全消しする。
+        -->
+        <server name="DB_DATABASE" value="testing" force="true"/>
+        <server name="DB_URL" value="" force="true"/>
         <env name="FILESYSTEM_DISK" value="public"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

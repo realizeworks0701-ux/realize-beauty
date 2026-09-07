@@ -91,12 +91,15 @@ trait ConfiguresStripe
         string $eventId = 'evt_test_1',
         ?int $timestamp = null,
         ?Carbon $createdAt = null,
+        bool $livemode = false,
     ): array {
         $payload = json_encode([
             'id' => $eventId,
             'object' => 'event',
             'type' => $type,
             'created' => ($createdAt ?? Carbon::now()->utc())->getTimestamp(),
+            // 実際の Stripe は常に送ってくる。既定は false（configureStripe が sk_test_ を入れるため）
+            'livemode' => $livemode,
             'data' => ['object' => $object],
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 

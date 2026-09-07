@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\Log;
  */
 class StripeClient
 {
+    public const MODE_LIVE = 'live';
+
+    public const MODE_TEST = 'test';
+
     public function __construct() {}
 
     /**
@@ -141,25 +145,55 @@ class StripeClient
     }
 
     /**
+     * 設定されている STRIPE_SECRET から Stripe のモードを判定する。
+     *
+     * Live/Test の判定はここだけに置く（APP_ENV との整合検査・Webhook の livemode 照合・
+     * stripe:check がすべてこれを使う）。制限キー（rk_）も正規のシークレットキーなので
+     * live/test を判定できる。
+     *
+     * 未設定・想定外の接頭辞は「判定できない」として null を返す。これを test と
+     * 決め打ちすると、キーの設定漏れが「Live イベントの取り違え」として扱われ、
+     * 本番の課金イベントを黙って捨て続けることになる。
+     *
+     * @return self::MODE_*|null
+     */
+    public static function configuredMode(): ?string
+    {
+        $secret = config('billing.stripe.secret');
+
+        if (! is_string($secret)) {
+            return null;
+        }
+
+        return match (true) {
+            str_starts_with($secret, 'sk_live_'), str_starts_with($secret, 'rk_live_') => self::MODE_LIVE,
+            str_starts_with($secret, 'sk_test_'), str_starts_with($secret, 'rk_test_') => self::MODE_TEST,
+            default => null,
+        };
+    }
+
+    /**
      * Live/Test キーと APP_ENV の整合を検査する。設定確認コマンドからも使う。
      */
     public function assertModeMatchesEnvironment(): void
     {
-        $secret = $this->secret();
+        // 未設定はモード判定より先に、専用のメッセージで弾く。
+        $this->secret();
 
         if (! config('billing.stripe.enforce_mode')) {
             return;
         }
 
+        $mode = self::configuredMode();
         $isProduction = app()->environment('production');
 
-        if ($isProduction && str_starts_with($secret, 'sk_test_')) {
+        if ($isProduction && $mode === self::MODE_TEST) {
             throw new StripeConfigException(
                 '本番環境に Stripe の Test キーが設定されています。Live キー（sk_live_）を設定してください。',
             );
         }
 
-        if (! $isProduction && str_starts_with($secret, 'sk_live_')) {
+        if (! $isProduction && $mode === self::MODE_LIVE) {
             throw new StripeConfigException(
                 '本番以外の環境に Stripe の Live キーが設定されています。Test キー（sk_test_）を設定してください。',
             );

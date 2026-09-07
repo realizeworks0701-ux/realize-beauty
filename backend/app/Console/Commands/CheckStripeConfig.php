@@ -27,7 +27,8 @@ class CheckStripeConfig extends Command
         $this->newLine();
 
         $ok = true;
-        $ok = $this->reportKey('STRIPE_SECRET', config('billing.stripe.secret'), ['sk_test_', 'sk_live_']) && $ok;
+        // 制限キー（rk_）も StripeClient::configuredMode() が live/test を判定するため、想定内として扱う。
+        $ok = $this->reportKey('STRIPE_SECRET', config('billing.stripe.secret'), ['sk_test_', 'sk_live_', 'rk_test_', 'rk_live_']) && $ok;
         $ok = $this->reportKey('STRIPE_KEY', config('billing.stripe.key'), ['pk_test_', 'pk_live_']) && $ok;
         $ok = $this->reportSecret('STRIPE_WEBHOOK_SECRET', config('billing.stripe.webhook_secret')) && $ok;
 

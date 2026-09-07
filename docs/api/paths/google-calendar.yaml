@@ -147,7 +147,7 @@ googleCalendarAuthUrl:
       キャッシュキーは state の生値ではなく **`google_oauth_state:{state}` の接頭辞付き**とする
       （CACHE_STORE=database で全用途のキーが同一テーブルに同居するため、他用途のキーとの衝突を避ける）。
       state をキャッシュで持つのは、コールバックが Google からのブラウザリダイレクトで Bearer トークンを持たないため
-      （SPA〈Cloudflare Pages〉と API〈Render〉が別オリジンである前提）。
+      （SPA〈Cloudflare Workers〉と API〈Render〉が別オリジンである前提）。
       scope は `https://www.googleapis.com/auth/calendar.events`（RB 予約の読み書き）と
       `https://www.googleapis.com/auth/calendar.calendarlist.readonly`（カレンダー一覧取得）。
       refresh_token を確実に取得するため access_type=offline + prompt=consent を付与する。

@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_PUBLIC_API_BASE_URL?: string
   /** 'true' で開発用モックアダプタを有効化。 */
   readonly VITE_USE_MOCK?: string
+  /** 設定されていると画面上部に環境バッジを出す（例 'DEVELOP'）。本番では未設定。 */
+  readonly VITE_ENV_LABEL?: string
 }
 
 interface ImportMeta {

@@ -52,7 +52,7 @@ class DatabaseSeeder extends Seeder
             [
                 'salon_id' => $salon->id,
                 'name' => '山田 太郎',
-                'password' => Hash::make('email'),
+                'password' => Hash::make('password'),
                 'role' => Role::Owner,
                 'is_active' => true,
             ],
@@ -63,7 +63,7 @@ class DatabaseSeeder extends Seeder
             [
                 'salon_id' => $salon->id,
                 'name' => '田中 美咲',
-                'password' => Hash::make('email'),
+                'password' => Hash::make('password'),
                 'role' => Role::Staff,
                 'is_active' => true,
             ],

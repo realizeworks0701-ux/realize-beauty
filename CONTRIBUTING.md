@@ -38,13 +38,17 @@ Realize Beautyは以下の思想で開発します。
 
 # Git Workflow
 
+feature/* → develop → main
+
 基本ブランチ
 
-main
+main（本番環境へデプロイ）
+
+develop（develop 環境へデプロイ。日常の統合先）
 
 機能開発
 
-feature/xxxx
+feature/xxxx（developから切り、developへ戻す）
 
 修正
 
@@ -182,8 +186,17 @@ AIへの指示は必ず設計書を参照してください。
 
 mainブランチへ直接コミットしません。
 
+mainへの直接コミットは
+本番環境への直接デプロイを意味します。
+
 featureブランチで開発し、
-レビュー後にマージします。
+レビュー後にdevelopへマージします。
+
+本番へはdevelop → mainのPRで出します。
+
+ブランチ運用は
+[ADR-010](docs/decisions/ADR-010-git-workflow.md)と
+[ADR-031](docs/decisions/ADR-031-two-environment-deployment.md)を参照してください。
 
 ---
 
