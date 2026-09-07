@@ -45,6 +45,19 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 
 ---
 
+## STEP 0.5. GitHub のブランチ保護
+
+`develop` ブランチはこちらで作成して push する。そのうえで、GitHub 側の設定はあなたの作業になる。
+
+1. リポジトリ → Settings → Branches → **`main` にブランチ保護ルールを追加**する。
+   - Require a pull request before merging
+   - Require status checks to pass（`backend` と `frontend` のジョブを選ぶ）
+2. 同様に `develop` にも同じルールを付ける（任意）。
+
+直近15コミットが `main` に直接入っており、[ADR-010](decisions/ADR-010-git-workflow.md) と [CONTRIBUTING.md](../CONTRIBUTING.md) の「main へ直接コミットしない」が実際には守られていない。2環境に分けると、`main` への直接コミットは**本番への直接デプロイ**を意味するようになる。
+
+---
+
 ## STEP 1. Neon（develop の DB）
 
 1. [neon.tech](https://neon.tech) でアカウントを作る。
