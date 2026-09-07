@@ -1014,7 +1014,8 @@ migrate_with_retry() {
 }
 migrate_with_retry
 PROBE
-sh retry-probe.sh; echo "exit=$?"```
+sh retry-probe.sh; echo "exit=$?"
+```
 
 Expected: `migrate failed (attempt 1/3)` と `(attempt 2/3)` が出たあと `migrate failed after 3 attempts`、最後に `exit=1`。
 
