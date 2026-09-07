@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
+    "deploy": "wrangler deploy",
+    "deploy:develop": "wrangler deploy --env develop",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "run-s \"lint:*\"",
@@ -49,7 +51,8 @@
     "vite-plugin-vue-devtools": "^8.1.2",
     "vitest": "^4.1.10",
     "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.3.5"
+    "vue-tsc": "^3.3.5",
+    "wrangler": "^4.129.0"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
