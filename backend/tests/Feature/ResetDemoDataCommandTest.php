@@ -55,6 +55,12 @@ class ResetDemoDataCommandTest extends TestCase
      * 唯一このテストだけが実際に demo:reset を最後まで走らせる。
      * --plan=lite でのプラン切り替え（Subscription::query()->update() が
      * enum キャストを経ずに書き込む経路）を実データで確認する。
+     *
+     * このテストは PostgreSQL が DDL をトランザクション内で巻き戻せることに依存している。
+     * RefreshDatabase が張ったトランザクションの内側で migrate:fresh（DROP / CREATE TABLE）を
+     * 走らせているため成り立っている。トランザクション内で実行できない DDL
+     * （CREATE INDEX CONCURRENTLY など）を使うマイグレーションが増えると、
+     * 原因の分かりにくい形でこのテストだけが落ちる。
      */
     public function test_it_switches_to_the_requested_plan_after_reseeding(): void
     {
@@ -65,6 +71,11 @@ class ResetDemoDataCommandTest extends TestCase
         ])->assertExitCode(0);
 
         $this->assertSame('lite', DB::table('subscriptions')->value('plan'));
+
+        // db:seed を飛ばす実装でも通ってしまわないよう、投入された実データも確かめる。
+        $this->assertDatabaseHas('users', ['email' => 'admin@example.com']);
+        $this->assertGreaterThan(0, DB::table('customers')->count());
+        $this->assertGreaterThan(0, DB::table('reservations')->count());
     }
 
     public function test_it_asks_for_the_database_name_when_not_forced(): void

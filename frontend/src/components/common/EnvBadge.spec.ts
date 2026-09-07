@@ -7,8 +7,17 @@ describe('EnvBadge', () => {
     vi.unstubAllEnvs()
   })
 
-  it('VITE_ENV_LABEL が未設定なら何も描画しない', () => {
+  it('VITE_ENV_LABEL が空文字なら何も描画しない', () => {
     vi.stubEnv('VITE_ENV_LABEL', '')
+
+    const wrapper = mount(EnvBadge)
+
+    expect(wrapper.find('.env-badge').exists()).toBe(false)
+  })
+
+  // 本番ビルドは空文字ではなく「変数そのものが無い」状態になる。
+  it('VITE_ENV_LABEL が undefined なら何も描画しない', () => {
+    vi.stubEnv('VITE_ENV_LABEL', undefined)
 
     const wrapper = mount(EnvBadge)
 
