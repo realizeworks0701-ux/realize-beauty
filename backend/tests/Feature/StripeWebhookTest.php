@@ -6,6 +6,7 @@ use App\Enums\SubscriptionPlan;
 use App\Enums\SubscriptionStatus;
 use App\Models\Salon;
 use App\Models\StripeWebhookEvent;
+use App\Repositories\StripeWebhookEventRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -612,8 +613,11 @@ class StripeWebhookTest extends TestCase
      * 本番の whsec を develop に貼るなどの取り違えで、Live のイベントが
      * テストモードの環境へ適用されないようにする。
      * 署名は通ってしまうため、livemode がモード分離の最後の砦になる。
+     *
+     * 記録は failed にする。skipped は claim() の再処理対象外で、
+     * ダッシュボードからの再送も重複として弾かれてしまうため。
      */
-    public function test_skips_an_event_whose_livemode_does_not_match_the_secret_key(): void
+    public function test_records_an_event_whose_livemode_does_not_match_the_secret_key_as_failed(): void
     {
         $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
         $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
@@ -631,14 +635,20 @@ class StripeWebhookTest extends TestCase
 
         $this->assertDatabaseHas('stripe_webhook_events', [
             'stripe_event_id' => 'evt_test_1',
-            'status' => 'skipped',
+            'status' => 'failed',
+            'message' => 'イベントの livemode が STRIPE_SECRET のモードと一致しません。',
         ]);
 
         // Lite のまま。Live のイベントがテストモードの環境へ適用されていない
         $this->assertSame(SubscriptionPlan::Lite, $salon->subscription()->firstOrFail()->plan);
+
+        // キーを直したあとにダッシュボードから再送すれば処理できる状態になっている
+        $this->assertTrue(
+            app(StripeWebhookEventRepository::class)->claim('evt_test_1', 'customer.subscription.updated', null),
+        );
     }
 
-    public function test_skips_an_event_without_a_livemode_field(): void
+    public function test_records_an_event_without_a_livemode_field_as_failed(): void
     {
         $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
         $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
@@ -661,11 +671,80 @@ class StripeWebhookTest extends TestCase
 
         $this->assertDatabaseHas('stripe_webhook_events', [
             'stripe_event_id' => 'evt_test_no_livemode',
-            'status' => 'skipped',
+            'status' => 'failed',
+            'message' => 'イベントに livemode が無いか、真偽値ではありません。',
         ]);
 
         // Lite のまま。livemode が欠けたイベントが適用されていない
         $this->assertSame(SubscriptionPlan::Lite, $salon->subscription()->firstOrFail()->plan);
+    }
+
+    /**
+     * 制限キー（rk_）も正規のシークレットキーで、live/test を判定できる。
+     * 判定できないものとして扱うと、正しい署名の Live イベントを取りこぼす。
+     */
+    public function test_treats_a_restricted_key_as_a_normal_secret_key(): void
+    {
+        $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
+        $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
+
+        config(['billing.stripe.secret' => 'rk_test_dummy']);
+
+        [$payload, $signature] = $this->signedWebhook(
+            'customer.subscription.updated',
+            $this->stripeSubscription([
+                'status' => 'active',
+                'items' => ['data' => [['id' => 'si_test_1', 'price' => ['id' => self::PRICE_PRO]]]],
+            ]),
+        );
+
+        $this->postWebhook($payload, $signature)->assertOk();
+
+        $this->assertDatabaseHas('stripe_webhook_events', [
+            'stripe_event_id' => 'evt_test_1',
+            'status' => 'processed',
+        ]);
+
+        $this->assertSame(SubscriptionPlan::Pro, $salon->subscription()->firstOrFail()->plan);
+    }
+
+    /**
+     * STRIPE_SECRET が未設定のまま Live のイベントが届いた場合。
+     *
+     * これは「別環境のイベントが届いた」のではなく設定不備なので、200 で捨てずに
+     * 5xx を返して Stripe に再送させる。STRIPE_SECRET と STRIPE_WEBHOOK_SECRET は
+     * どちらも sync: false で、片方だけ入れ忘れる事故が実際に起こりうる。
+     */
+    public function test_returns_a_server_error_when_the_secret_mode_cannot_be_determined(): void
+    {
+        $salon = Salon::factory()->onPlan(SubscriptionPlan::Lite)->create();
+        $salon->subscription()->update(['stripe_subscription_id' => 'sub_test_1', 'stripe_customer_id' => 'cus_test_1']);
+
+        config(['billing.stripe.secret' => '']);
+
+        [$payload, $signature] = $this->signedWebhook(
+            'customer.subscription.updated',
+            $this->stripeSubscription([
+                'status' => 'active',
+                'items' => ['data' => [['id' => 'si_test_1', 'price' => ['id' => self::PRICE_PRO]]]],
+            ]),
+            livemode: true,
+        );
+
+        $this->postWebhook($payload, $signature)->assertStatus(503);
+
+        $this->assertDatabaseHas('stripe_webhook_events', [
+            'stripe_event_id' => 'evt_test_1',
+            'status' => 'failed',
+        ]);
+
+        // Lite のまま。設定不備の状態で契約を書き換えていない
+        $this->assertSame(SubscriptionPlan::Lite, $salon->subscription()->firstOrFail()->plan);
+
+        // 設定を直したあとの再送で復旧できる
+        $this->assertTrue(
+            app(StripeWebhookEventRepository::class)->claim('evt_test_1', 'customer.subscription.updated', null),
+        );
     }
 
     private function postWebhook(string $payload, string $signature)

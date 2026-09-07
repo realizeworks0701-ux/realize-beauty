@@ -24,6 +24,7 @@ class StripeWebhookService
 
     /**
      * @throws StripeSignatureException 署名検証に失敗した場合（呼び出し側は 400 を返す）
+     * @throws StripeConfigException Stripe のモードを判定できない場合（5xx を返して Stripe に再送させる）
      */
     public function handle(string $payload, ?string $signatureHeader): void
     {
@@ -53,26 +54,25 @@ class StripeWebhookService
             return;
         }
 
-        // 署名は通ったが、モードが食い違うイベント。本番の whsec を別環境に貼るなどの
-        // 取り違えでしか起きないが、起きた場合はサロンIDが両DBとも1始まりのため
-        // metadata.salon_id が必ず「どれかのサロン」に当たってしまう。
-        // 監査のため claim 後に skipped として記録する。
-        if (! $this->modeMatches($event)) {
-            Log::warning('Stripe webhook skipped for livemode mismatch', [
-                'event_id' => $eventId,
-                'type' => $type,
-                'event_livemode' => $event['livemode'] ?? null,
-            ]);
-
-            $this->webhookEventRepository->markSkipped(
-                $eventId,
-                'イベントの livemode が STRIPE_SECRET のモードと一致しません。',
-            );
-
-            return;
-        }
-
         try {
+            // 署名は通ったが、モードが食い違うイベント。本番の whsec を別環境に貼るなどの
+            // 取り違えでしか起きないが、起きた場合はサロンIDが両DBとも1始まりのため
+            // metadata.salon_id が必ず「どれかのサロン」に当たってしまう。
+            // 監査のため claim 後に failed として記録する。
+            $rejection = $this->modeRejectionReason($event);
+
+            if ($rejection !== null) {
+                Log::warning('Stripe webhook rejected for livemode mismatch', [
+                    'event_id' => $eventId,
+                    'type' => $type,
+                    'event_livemode' => $event['livemode'] ?? null,
+                ]);
+
+                $this->webhookEventRepository->markFailed($eventId, $rejection);
+
+                return;
+            }
+
             $handled = $this->dispatch($type, $event['data']['object'] ?? [], $eventId, $occurredAt);
         } catch (Throwable $e) {
             // 失敗を記録して Stripe の再送で復旧できるようにしたうえで、
@@ -88,21 +88,39 @@ class StripeWebhookService
     }
 
     /**
-     * Stripe の Event は常に livemode を持つ。欠けているものは正規のイベントではない。
+     * このイベントを取り違えとして拒否する理由を返す。受理してよければ null。
+     *
+     * 拒否したイベントは skipped ではなく failed として記録する。
+     * StripeWebhookEventRepository::claim() が再処理を許すのは failed と滞留した
+     * processing だけで、skipped にするとその evt_ が二度と処理できなくなり、
+     * ダッシュボードからの再送も重複として弾かれるため。
      *
      * @param  array<string, mixed>  $event
+     *
+     * @throws StripeConfigException モードを判定できない場合（呼び出し元へ抜けて 5xx になる）
      */
-    private function modeMatches(array $event): bool
+    private function modeRejectionReason(array $event): ?string
     {
-        if (! isset($event['livemode']) && ! array_key_exists('livemode', $event)) {
-            return false;
+        // Stripe の Event は常に livemode を持つ。欠けているものは正規のイベントではない。
+        if (! array_key_exists('livemode', $event) || ! is_bool($event['livemode'])) {
+            return 'イベントに livemode が無いか、真偽値ではありません。';
         }
 
-        if (! is_bool($event['livemode'])) {
-            return false;
+        $mode = StripeClient::configuredMode();
+
+        // モードを判定できないのは「別環境のイベントが届いた」のではなく設定不備
+        // （STRIPE_SECRET 未設定・想定外の接頭辞）。取り違えとして握りつぶすと、
+        // 正しい署名の Live イベントを 200 で捨て続けることになるため例外にする。
+        // 呼び出し元の catch が failed として記録したうえで 5xx を返し、Stripe に再送させる。
+        if ($mode === null) {
+            throw new StripeConfigException(
+                'STRIPE_SECRET が未設定か想定外の形式のため、Stripe のモード（live/test）を判定できません。',
+            );
         }
 
-        return $event['livemode'] === str_starts_with((string) config('billing.stripe.secret'), 'sk_live_');
+        return $event['livemode'] === ($mode === StripeClient::MODE_LIVE)
+            ? null
+            : 'イベントの livemode が STRIPE_SECRET のモードと一致しません。';
     }
 
     /**
