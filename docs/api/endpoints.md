@@ -1737,7 +1737,7 @@ Google OAuth（認可コードフロー）を開始し、認可URLを取得す�
 
 - 推測不能なランダム値 state を発行し、キャッシュへ `state → {salon_id, user_id, mode}` を **TTL 10分**で保存してから認可URLを返す（SPA はこのURLへブラウザを遷移させる）
 - **キャッシュキーは state の生値ではなく `google_oauth_state:{state}` の接頭辞付きとする**（`CACHE_STORE=database` で全用途のキーが同一テーブルに同居するため、他用途のキーとの衝突〈型の異なる値の復元〉を避ける）
-- state をキャッシュで持つのは、コールバックが Google からのブラウザリダイレクトで Bearer トークンを持たないため（SPA〈Cloudflare Pages〉と API〈Render〉が別オリジンである前提）
+- state をキャッシュで持つのは、コールバックが Google からのブラウザリダイレクトで Bearer トークンを持たないため（SPA〈Cloudflare Workers〉と API〈Render〉が別オリジンである前提）
 - キャッシュに保存する user_id はモードで決まる: per_staff は認証ユーザーのID、shared は null（サロン共有接続）
 - scope は `https://www.googleapis.com/auth/calendar.events`（RB 予約の読み書き）と `https://www.googleapis.com/auth/calendar.calendarlist.readonly`（カレンダー一覧取得）
 - refresh_token を確実に取得するため `access_type=offline` + `prompt=consent` を付与する

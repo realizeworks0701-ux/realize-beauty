@@ -1,4 +1,4 @@
-# ADR-022: デプロイ構成（Render + Cloudflare Pages + R2）
+# ADR-022: デプロイ構成（Render + Cloudflare Workers + R2）
 
 ## Status
 
@@ -24,7 +24,7 @@ SPA と API は分離構成（ADR-001 / ADR-011）であり、それぞれに適
 
 ## Decision
 
-- **フロント**: Cloudflare Pages（静的ホスティング、git連携で自動デプロイ）
+- **フロント**: Cloudflare Workers Static Assets（`frontend/wrangler.jsonc`、git連携で自動デプロイ）
 - **バックエンド**: Render（Docker）+ Render Managed PostgreSQL
 - **写真ストレージ**: Cloudflare R2（`FILESYSTEM_DISK=r2`）
 - **CI と分離**: デプロイはホスト側の git 連携で行い、GitHub Actions は検証のみ（ADR-013）
@@ -39,7 +39,8 @@ SPA と API は分離構成（ADR-001 / ADR-011）であり、それぞれに適
   ならないようにする
 - `filesystems.php` に `r2` ディスク（S3互換）を追加し、`league/flysystem-aws-s3-v3` を導入
 - Render 用の `backend/Dockerfile`・`backend/docker/entrypoint.sh`・ルートの `render.yaml`（Blueprint）
-- SPA ルーティングは `frontend/public/_redirects` で index.html にフォールバック
+- SPA ルーティングは `wrangler.jsonc` の `assets.not_found_handling: "single-page-application"` で
+  index.html にフォールバック
 
 ---
 
@@ -76,6 +77,34 @@ CDN 配信の利点も失う。分離構成の方が SPA 設計（ADR-011）と�
 
 ---
 
+## Note: フロントの配信方式（2026-09-07 追記）
+
+**本 ADR は当初「Cloudflare Pages」と記述していたが、実際の配信は Cloudflare Workers Static Assets である。**
+2026-07-22（`03b5820`）に `frontend/wrangler.jsonc` を追加して移行しており、本文の記述を実態に合わせた。
+
+- SPA フォールバックを担うのは `frontend/public/_redirects` ではなく、`wrangler.jsonc` の
+  `assets.not_found_handling: "single-page-application"`。`frontend/public/` には `favicon.ico` しか置いていない
+- 払い出される URL は `https://realize-beauty.<subdomain>.workers.dev` で、デプロイをまたいで安定する。
+  そのため完全一致の `CORS_ALLOWED_ORIGINS` に載せられる
+
+## Note: 2環境構成への拡張（2026-09-07 追記）
+
+本 ADR のデプロイ先は本番の1つだけだった。[ADR-031](ADR-031-two-environment-deployment.md) で
+**`develop` ブランチ → develop 環境、`main` → 本番**の2環境構成に拡張した。
+
+| | production | develop |
+|---|---|---|
+| Render Web | `realize-beauty-api` | `realize-beauty-api-dev`（free） |
+| DB | Render Managed PostgreSQL | Neon 無料プラン（`DB_URL`） |
+| フロント Worker | `realize-beauty` | `realize-beauty-develop` |
+| `APP_ENV` | `production` | `staging` |
+| R2 | 既存バケット | 専用バケット |
+
+本 ADR の構成要素（Render / Workers / R2 / `VITE_API_BASE_URL` / `CORS_ALLOWED_ORIGINS`）は
+そのまま2組に増える。develop 側の値・資格情報を本番と共有しない理由は ADR-031 を参照。
+
+---
+
 ## References
 
 - docs/deployment.md
@@ -83,3 +112,4 @@ CDN 配信の利点も失う。分離構成の方が SPA 設計（ADR-011）と�
 - docs/decisions/ADR-005-cloudflare-r2.md
 - docs/decisions/ADR-011-frontend-architecture.md
 - docs/decisions/ADR-013-ci-cd.md
+- [ADR-031](ADR-031-two-environment-deployment.md)（develop 環境と本番環境の分離）

@@ -25,3 +25,12 @@
 連番はゼロ埋め3桁とし、既存の最大番号+1を採番する。
 
 テンプレートは TEMPLATE.md を使用する。
+
+---
+
+一覧
+
+全 ADR の要約は [memories/repo/adr-summary.md](../../memories/repo/adr-summary.md) にまとめてある。
+ADR を追加・更新したら同ファイルも更新する（AGENTS.md の規定）。
+
+最新は [ADR-031: develop 環境と本番環境の分離](ADR-031-two-environment-deployment.md)（2026-09-07）。

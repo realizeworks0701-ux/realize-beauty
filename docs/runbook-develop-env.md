@@ -172,7 +172,22 @@ cd backend && php artisan key:generate --show
 
 4. **「非 production ブランチのビルド」は有効にしない。** 既定の `wrangler versions upload` はバージョンごとに別ホスト名を払い出すため、完全一致の CORS 許可リストが毎回弾く。
 
-既存の `realize-beauty` Worker 側は変更しない（Branch control が `main`、Deploy command が `npx wrangler deploy` のままであることだけ確認する）。
+### 既存の `realize-beauty` Worker（本番）も Deploy command だけ直す
+
+| 項目 | 変更前 | 変更後 |
+|---|---|---|
+| Deploy command | `npx wrangler deploy` | `npx wrangler deploy --env=""` |
+| Branch control（production branch） | `main` | `main`（変更なし） |
+
+`wrangler.jsonc` に `env`（develop）を定義したことで、引数なしの `npx wrangler deploy` は次の警告を出すようになった。デプロイ自体は成功する（非致命的）が、毎回ログに残る。
+
+> Multiple environments are defined in the Wrangler configuration file, but no target environment was specified for the deploy command.
+
+`--env=""`（空文字）は「トップレベルの設定を使う」という明示になり、警告が出ず、Worker 名も `realize-beauty` のままに解決される（終了コード 0 で確認済み）。
+
+> **`--env production` は使わないこと。** wrangler は env 名から Worker 名を導出するため、`realize-beauty-production` という**別の Worker が新規に作られる**。本番のトラフィックは既存の `realize-beauty` に向いたままなので、デプロイしたつもりで何も反映されない。
+
+ローカルからの手動デプロイも同じで、本番は `npm run deploy`（= `wrangler deploy --env=""`）、develop は `npm run deploy:develop`（= `wrangler deploy --env develop`）を使う。
 
 ---
 

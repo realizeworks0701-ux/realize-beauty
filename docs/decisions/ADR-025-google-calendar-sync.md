@@ -33,7 +33,7 @@ RB の予約を Google に書き出すだけでは、この課題は解決しな
 - 双方向同期のエコー（無限ループ）をどう防ぐか
 - Google 側の変更をどう検知し、RB と競合したときにどちらを真実とするか
 - 私用予定の内容をどこまで RB に保存するか（プライバシー）
-- SPA（Cloudflare Pages）と API（Render）が別オリジンである構成で OAuth をどう成立させるか
+- SPA（Cloudflare Workers）と API（Render）が別オリジンである構成で OAuth をどう成立させるか
 
 ---
 
@@ -496,7 +496,7 @@ busy 判定はロック内の重複チェックと同じ箇所で行う。
 
 ### 8. OAuth は API 側 redirect_uri でサーバ交換し SPA へ 302（FRONTEND_URL を新設）
 
-SPA（Cloudflare Pages）と API（Render）が**別オリジン**である構成を前提とする
+SPA（Cloudflare Workers）と API（Render）が**別オリジン**である構成を前提とする
 （フェーズ2レビューで顕在化した論点）。
 
 - `redirect_uri` は **API 側**の `{API_URL}/api/v1/google-calendar/callback` を
@@ -714,6 +714,14 @@ push 通知 + syncToken 増分同期を採用する。
   範囲外の予定は busy にならない（RB の予約可能範囲に合わせた割り切り）
 - `APP_KEY` ローテーション時に暗号化カラム（access_token / refresh_token）への配慮が
   運用上必要になる（ADR-024 と同様。`APP_PREVIOUS_KEYS` 設定または再暗号化）
+
+---
+
+## Note: フロントの配信方式（2026-09-07 追記）
+
+本 ADR は当初「Cloudflare Pages」と記述していたが、実際の配信は Cloudflare Workers Static Assets である（2026-07-22 `03b5820` で移行済み。[ADR-022](ADR-022-deployment.md) の同名の Note を参照）。本文の記述を実態に合わせた。
+
+本 ADR の決定そのもの（**SPA と API が別オリジンである**ことを前提に、`redirect_uri` を API 側に置き、サーバでトークン交換して `FRONTEND_URL` へ 302 する）は配信方式に依存しないため、変更はない。
 
 ---
 

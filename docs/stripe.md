@@ -3,41 +3,55 @@
 サブスクリプション課金の Stripe 側セットアップと動作確認の手順書。
 プランと機能制御の仕様は [subscription.md](subscription.md)、設計の背景は
 [ADR-029](decisions/ADR-029-subscription-billing.md) を参照。
+環境の分け方は [ADR-031](decisions/ADR-031-two-environment-deployment.md)、
+develop 環境の構築手順は [runbook-develop-env.md](runbook-develop-env.md)。
 
-## DEV と PRODUCTION は完全に別の Stripe である
+## 3つの環境と、2つの Stripe
 
-**最初に頭に入れること。** Stripe は同一アカウント内に Test Mode と Live Mode という
-2つの独立した世界を持ち、**Customer も Product も Price も Webhook も API キーも別物**である。
+**最初に頭に入れること。** Stripe は Test Mode と Live Mode という2つの独立した世界を持ち、
+**Customer も Product も Price も Webhook も API キーも別物**である。
 Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆も同じ。
 
+アプリ側の環境は3つあり、**Stripe のモードを決めるのは `APP_ENV` が `production` かどうか**の一点である。
+
 ```
-  DEV（ローカル / APP_ENV=local）          PRODUCTION（Render / APP_ENV=production）
-  ─────────────────────────────           ──────────────────────────────────────
-  Stripe  Test Mode                        Stripe  Live Mode
-    sk_test_... / pk_test_...                sk_live_... / pk_live_...
-    Test の price_xxx                        Live の price_xxx
-    Test の whsec_...                        Live の whsec_...
-    テストカードで決済                        実在のカードで実課金
-    stripe listen で受信                     https://<api>/api/webhooks/stripe で受信
+  local（ローカル）        develop（Render）        production（Render）
+  APP_ENV=local            APP_ENV=staging          APP_ENV=production
+  ──────────────────       ──────────────────       ──────────────────
+  Stripe  Test Mode        Stripe  Test Mode        Stripe  Live Mode
+    sk_test_ / pk_test_      sk_test_ / pk_test_      sk_live_ / pk_live_
+    テストカードで決済        テストカードで決済         実在のカードで実課金
+    stripe listen で受信     develop のURLで受信       本番のURLで受信
 ```
 
-| 項目 | DEV | PRODUCTION |
-|---|---|---|
-| `APP_ENV` | `local` | `production` |
-| Stripe のモード | Test Mode | Live Mode |
-| `STRIPE_SECRET` | `sk_test_...` | `sk_live_...` |
-| `STRIPE_KEY` | `pk_test_...` | `pk_live_...` |
-| `STRIPE_PRICE_*` | Test Mode で作った Price ID | Live Mode で作った Price ID |
-| `STRIPE_WEBHOOK_SECRET` | `stripe listen` が表示する `whsec_...` | 本番エンドポイントの `whsec_...` |
-| Webhook の受信先 | Stripe CLI が localhost へ転送 | `https://<api>/api/webhooks/stripe` |
-| カード | Stripe 公式のテストカード（§8） | 実在のカード。**実際に請求される** |
+| 項目 | local | develop | production |
+|---|---|---|---|
+| `APP_ENV` | `local` | `staging` | `production` |
+| Stripe のモード | Test Mode | Test Mode（**named sandbox**） | Live Mode |
+| `STRIPE_SECRET` | `sk_test_...` | `sk_test_...`（sandbox の値） | `sk_live_...` |
+| `STRIPE_KEY` | `pk_test_...` | `pk_test_...`（sandbox の値） | `pk_live_...` |
+| `STRIPE_PRICE_*` | Test Mode の Price ID | **sandbox の** Price ID | Live Mode の Price ID |
+| `STRIPE_WEBHOOK_SECRET` | `stripe listen` が表示する値 | sandbox の develop エンドポイントの値 | 本番エンドポイントの値 |
+| Webhook の受信先 | Stripe CLI が localhost へ転送 | `https://<develop api>/api/webhooks/stripe` | `https://<api>/api/webhooks/stripe` |
+| カード | テストカード（§8） | テストカード（§8） | 実在のカード。**実際に請求される** |
+| 設定する場所 | `backend/.env` | Render（`realize-beauty-api-dev`） | Render（`realize-beauty-api`） |
+
+**develop は「本番と同じ形でホストされた Test Mode」である。** local との違いは Stripe CLI を
+使わないことで、Webhook はダッシュボードに登録した実エンドポイントが受ける。
+`local` と `develop` は同じ Test Mode だが、**develop は named sandbox を使う**（§1）。
 
 `StripeClient::assertModeMatchesEnvironment()` が**すべての Stripe API 呼び出しの手前で**
-この対応を検査し、取り違えていれば `StripeConfigException` を投げて止める（§6）。
+`APP_ENV` とキーの対応を検査し、取り違えていれば `StripeConfigException` を投げて止める（§6）。
+production 以外はすべて Test 側と見なされるため、**develop の `APP_ENV` を `production` にしてはならない**
+（ADR-031）。
 
 > **Test Mode の Price ID を Live で使う／その逆**は、キー検査をすり抜ける唯一の取り違えである。
 > Price ID は接頭辞から test / live を判別できないため（どちらも `price_`）、
 > `stripe:check` は「設定されていること」しか確認できない。§10 のチェックリストで目視確認する。
+
+> **Webhook は `livemode` も検査する。** イベントの `livemode` が `STRIPE_SECRET` のモードと
+> 食い違う場合、アプリは処理せず `skipped` として記録し 200 を返す（§7）。
+> 本番の `whsec_` を develop に貼るような取り違えを、DB が書き換わる前に止めるための検査である。
 
 ---
 
@@ -58,13 +72,27 @@ Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆�
 2. **Test Mode / Live Mode の切り替えはダッシュボード右上のトグル**。以降の作業は
    「今どちらのモードにいるか」を毎回確認してから行う
 3. Live Mode で決済を受けるには**事業者情報の審査（本人確認・銀行口座の登録）**が必要。
-   審査が通るまで Live のキーは発行されるが決済は受け付けられない。DEV の作業は Test Mode だけで完結する
+   審査が通るまで Live のキーは発行されるが決済は受け付けられない。
+   local と develop の作業は Test Mode だけで完結する
+
+### develop 用の named sandbox を作る
+
+**develop には必ず named sandbox を使う。** ダッシュボード右上のトグルで切り替える
+レガシーのテストモードは、Dashboard 設定の一部を Live と共有する。
+テスト側のカスタマーポータル設定をいじると **Live 側が変わりうる**。
+
+1. ダッシュボード右上のアカウント切替 → **Sandboxes** → 新規 sandbox を作成（名前は `develop` など）
+2. 以降、develop 向けの作業（Price の作成・カスタマーポータル・Webhook・API キー）は
+   **すべてこの sandbox の中で行う**
+
+local は従来どおりのテストモードでよいが、sandbox を共用しても構わない。
+どちらにせよ **develop と local で `whsec_` は別**になる（受信経路が違うため）。
 
 ---
 
-## 2. Product と Price を作る（Test / Live 双方）
+## 2. Product と Price を作る（Test / sandbox / Live）
 
-**Test Mode と Live Mode の両方で、同じ作業を2回行う。** Price ID は別々になる。
+**使う環境の数だけ、同じ作業を繰り返す。** Price ID はそれぞれ別になる。
 
 1. **Product catalog → 商品を追加** で商品を3つ作る
 
@@ -80,7 +108,13 @@ Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆�
      ズレると画面の表示と実際の請求額が食い違う（請求は Stripe 側が正）
 
 2. 各商品の料金セクションから **Price ID（`price_` で始まる文字列）**をコピーする
-3. Test Mode の3つを DEV の `.env` に、Live Mode の3つを本番の環境変数に設定する（§5）
+3. 作った Price ID を、それぞれの環境へ設定する（§5）
+
+   | 作った場所 | 設定先 |
+   |---|---|
+   | Test Mode | ローカルの `backend/.env` |
+   | develop の sandbox | Render `realize-beauty-api-dev` の環境変数 |
+   | Live Mode | Render `realize-beauty-api` の環境変数 |
 
 > 価格を変更するときは、**既存の Price を編集せず新しい Price を作って ID を差し替える**。
 > Stripe の Price は原則イミュータブルで、既存の契約者は元の Price のまま継続する。
@@ -91,7 +125,9 @@ Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆�
 ## 3. Customer Portal を有効化する
 
 支払い方法の変更と請求履歴の閲覧は Stripe の画面に委ねている
-（`POST /api/v1/subscription/portal` がポータルのURLを返す）。**これも Test / Live 双方で設定する。**
+（`POST /api/v1/subscription/portal` がポータルのURLを返す）。
+**Test Mode・sandbox・Live Mode のそれぞれで、個別に設定して保存する。**
+設定は環境をまたいで引き継がれない。
 
 1. **設定 → 請求 → カスタマーポータル** を開く
 2. 有効化し、以下を許可する
@@ -105,6 +141,11 @@ Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆�
 4. **デフォルトのリダイレクトURL**にフロントの `/settings/plan` を設定する
    （アプリは `return_url` を毎回渡すため必須ではないが、保険として入れておく）
 
+> **保存を忘れると「お支払い情報の変更」が動かない。** 設定が未保存のモードでは
+> `/v1/billing_portal/sessions` が 400 を返し、アプリは `StripeApiException`
+> （**502**「お支払いサービスに接続できませんでした。」）を返す。
+> `stripe:check` はこの未保存を検出できない（§6）。**実際にボタンを押して確かめるしかない。**
+
 ---
 
 ## 4. Webhook エンドポイントを登録する
@@ -112,8 +153,19 @@ Test Mode で作った `price_xxx` は Live Mode では存在せず、その逆�
 契約状態はフロントの申告ではなく **Webhook 経由でしか同期しない**。登録を忘れると、
 決済は通るのにアプリ側がいつまでも未契約のままになる。
 
-**DEV と PRODUCTION で別のエンドポイントを登録し、それぞれの署名シークレットを使う。**
-DEV は Stripe CLI を使うのでダッシュボードでの登録は不要（§7）。
+**環境ごとに別のエンドポイントを登録し、それぞれの署名シークレットを使う。**
+local は Stripe CLI を使うのでダッシュボードでの登録は不要（§7）。
+
+| 環境 | 登録先 | エンドポイント |
+|---|---|---|
+| local | 不要（Stripe CLI） | — |
+| develop | develop 用 sandbox | `https://<develop api>/api/webhooks/stripe` |
+| production | Live Mode | `https://<api>/api/webhooks/stripe` |
+
+> **`whsec_` を環境間で貼り違えないこと。** 本番の値を develop に貼ると Live のイベントが
+> develop の DB に適用されうる（両DBともサロンIDが1始まりなので `metadata.salon_id` の
+> 解決先は必ず存在する）。逆に develop の値を本番に貼ると、本番の Webhook が延々 400 を返し、
+> 契約状態が同期されなくなる。前者は §7 の `livemode` 検査が止めるが、貼り違えそのものは防げない。
 
 ### PRODUCTION（Live Mode）
 
@@ -138,18 +190,25 @@ DEV は Stripe CLI を使うのでダッシュボードでの登録は不要（�
 
 4. 発行された **署名シークレット（`whsec_` で始まる）**を本番の `STRIPE_WEBHOOK_SECRET` に設定する
 
+### develop（sandbox）
+
+手順は本番と同じで、**作業する場所が sandbox の中**である点だけが違う。
+URL は develop API の `https://<develop api>/api/webhooks/stripe`、送信するイベントも同じ6種。
+発行された `whsec_` は Render の `realize-beauty-api-dev` に設定し、**再デプロイする**
+（[runbook-develop-env.md](runbook-develop-env.md) STEP 8）。
+
 ---
 
 ## 5. 環境変数
 
-`backend/.env`（Git 管理外）と、本番は Render の環境変数に設定する。
+ローカルは `backend/.env`（Git 管理外）、develop と本番は Render の環境変数に設定する。
 `backend/.env.example` に説明つきで列挙してある。
 
 | 変数 | 必須 | 内容 |
 |---|:---:|---|
 | `STRIPE_KEY` | ✓ | Publishable Key。Checkout のリダイレクト方式では未使用だが、将来 Stripe.js を使う場合に備えて保持する |
 | `STRIPE_SECRET` | ✓ | Secret Key。**サーバ専用。フロントへ渡さない** |
-| `STRIPE_WEBHOOK_SECRET` | ✓ | Webhook の署名シークレット。DEV と本番で別の値 |
+| `STRIPE_WEBHOOK_SECRET` | ✓ | Webhook の署名シークレット。**環境ごとに別の値** |
 | `STRIPE_PRICE_LITE` | ✓ | Lite の Price ID |
 | `STRIPE_PRICE_STANDARD` | ✓ | Standard の Price ID |
 | `STRIPE_PRICE_PRO` | ✓ | Pro の Price ID |
@@ -157,7 +216,7 @@ DEV は Stripe CLI を使うのでダッシュボードでの登録は不要（�
 | `STRIPE_API_VERSION` | | 既定 `2024-06-20` |
 | `STRIPE_TIMEOUT` | | 既定 `15`（秒） |
 | `STRIPE_WEBHOOK_TOLERANCE` | | 既定 `300`（秒）。署名タイムスタンプの許容差。リプレイの窓を絞る |
-| `STRIPE_ENFORCE_MODE` | | 既定 `true`。Live/Test と `APP_ENV` の突き合わせ検査。**テスト以外で false にしない** |
+| `STRIPE_ENFORCE_MODE` | | 既定 `true`。Live/Test と `APP_ENV` の突き合わせ検査。**テスト以外で false にしない**（develop でも `true` のまま。テストモードに倒すのは `APP_ENV=staging` の役目） |
 | `BILLING_RETURN_PATH` | | 既定 `/settings/plan`。Checkout / ポータルから戻る SPA のパス |
 | `BILLING_BACKFILL_PLAN` | | 既定 `pro`。課金導入前から存在するサロンへ一括付与するプラン（初回マイグレーションのみ） |
 
@@ -169,7 +228,7 @@ success_url = {FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=success&session_id={C
 cancel_url  = {FRONTEND_URL}{BILLING_RETURN_PATH}?checkout=cancel
 ```
 
-### DEV の設定例
+### local の設定例（`backend/.env`）
 
 ```dotenv
 APP_ENV=local
@@ -188,11 +247,31 @@ STRIPE_PRICE_PRO=price_〈発行された値〉
 
 `.env` を編集したら `php artisan config:clear` を実行する（設定キャッシュが残っていると反映されない）。
 
-### PRODUCTION の設定例（Render の環境変数）
+### develop の設定例（Render `realize-beauty-api-dev` の環境変数）
+
+```dotenv
+APP_ENV=staging
+FRONTEND_URL=https://realize-beauty-develop.〈subdomain〉.workers.dev
+
+# sandbox の Test キー。Live キーを入れると StripeConfigException で止まる
+STRIPE_KEY=pk_test_〈sandbox の値〉
+STRIPE_SECRET=sk_test_〈sandbox の値〉
+# sandbox に登録した develop エンドポイントの値（本番のものではない）
+STRIPE_WEBHOOK_SECRET=whsec_〈発行された値〉
+
+# sandbox で作った Price ID
+STRIPE_PRICE_LITE=price_〈発行された値〉
+STRIPE_PRICE_STANDARD=price_〈発行された値〉
+STRIPE_PRICE_PRO=price_〈発行された値〉
+```
+
+`APP_ENV` は **`staging`**。`production` にすると Test キーが弾かれ、決済系の API が全滅する。
+
+### PRODUCTION の設定例（Render `realize-beauty-api` の環境変数）
 
 ```dotenv
 APP_ENV=production
-FRONTEND_URL=https://realize-beauty.pages.dev
+FRONTEND_URL=https://realize-beauty.〈subdomain〉.workers.dev
 
 STRIPE_KEY=pk_live_〈発行された値〉
 STRIPE_SECRET=sk_live_〈発行された値〉
@@ -205,8 +284,9 @@ STRIPE_PRICE_STANDARD=price_〈発行された値〉
 STRIPE_PRICE_PRO=price_〈発行された値〉
 ```
 
-本番コンテナは起動時に `config:cache` を実行するため、環境変数の変更は**再デプロイで反映される**
-（[deployment.md](deployment.md) / [runbook-hardening.md](runbook-hardening.md) と同じ注意点）。
+Render のコンテナは起動時に `config:cache` を実行するため、環境変数の変更は**再デプロイで反映される**。
+develop も同じ（[deployment.md](deployment.md) / [runbook-develop-env.md](runbook-develop-env.md) /
+[runbook-hardening.md](runbook-hardening.md) と同じ注意点）。
 
 ---
 
@@ -220,11 +300,18 @@ STRIPE_PRICE_PRO=price_〈発行された値〉
 | 状況 | 結果 |
 |---|---|
 | `APP_ENV=production` に `sk_test_` | `StripeConfigException`「本番環境に Stripe の Test キーが設定されています。」 |
-| 本番以外に `sk_live_` | `StripeConfigException`「本番以外の環境に Stripe の Live キーが設定されています。」 |
+| 本番以外（`local` / `staging`）に `sk_live_` | `StripeConfigException`「本番以外の環境に Stripe の Live キーが設定されています。」 |
 | `STRIPE_SECRET` が未設定 | `StripeConfigException`「STRIPE_SECRET が設定されていません。」 |
+
+判定は `APP_ENV === 'production'` の二値で、**`staging` は `local` と同じ「Test 側」**として扱われる。
+develop がテストモードで動くのはこの一点による（[ADR-031](decisions/ADR-031-two-environment-deployment.md)）。
+
+`StripeConfigException` は利用者には **503**「お支払い機能の設定に不備があります。管理者にお問い合わせください。」
+として返る。どのキーがどう食い違っているかはログにだけ残す。
 
 `STRIPE_ENFORCE_MODE=false` で無効化できるが、**用途は自動テストだけ**。
 これは「ローカルから本番の Stripe を叩けてしまう」状態を作らないための最後の砦である。
+**develop でも `true` のまま**にする。
 
 ### デプロイ前の診断コマンド
 
@@ -235,7 +322,25 @@ php artisan stripe:check
 秘密鍵そのものは出力せず、モード（test / live）と設定の有無だけを表示する。
 設定に問題があれば終了コード 1 を返す。
 
-正常時（DEV）:
+> **`stripe:check` は環境変数の静的検査であり、Stripe とは通信しない。** 次の3つは検出できない。
+>
+> - Price ID が**その環境の Stripe に実在するか**（形式と重複しか見ない）
+> - **カスタマーポータルの設定が保存済みか**（§3）
+> - Webhook エンドポイントが登録されているか
+>
+> いずれも実際に画面を操作して確かめるしかない（§9）。
+
+develop の設定は、ローカルから develop の値を渡して検査できる。
+
+```sh
+cd backend
+APP_ENV=staging \
+STRIPE_SECRET=sk_test_… STRIPE_KEY=pk_test_… STRIPE_WEBHOOK_SECRET=whsec_… \
+STRIPE_PRICE_LITE=price_… STRIPE_PRICE_STANDARD=price_… STRIPE_PRICE_PRO=price_… \
+  php artisan stripe:check
+```
+
+正常時（local）:
 
 ```
 APP_ENV: local
@@ -284,6 +389,9 @@ Price ID が抜けている場合は `Lite      Price ID 未設定` のように
 
 ## 7. ローカルで Webhook を受け取る
 
+**local 環境だけの手順。** develop と production はダッシュボードに登録した実エンドポイントで
+受けるので（§4）、Stripe CLI は使わない。
+
 ローカルの `localhost:8000` は Stripe から到達できないため、**Stripe CLI に転送させる**。
 
 ### 手順
@@ -325,15 +433,22 @@ Price ID が抜けている場合は `Lite      Price ID 未設定` のように
 > これは**署名検証と受信経路が通っていることの確認**であって、契約同期の確認にはならない。
 > 契約同期まで確かめるには §9 の手順で実際に Checkout を通す。
 
-### Webhook 側の仕様（DEV / 本番で共通）
+### Webhook 側の仕様（local / develop / production で共通）
 
 | 状況 | HTTP | 記録 |
 |---|:---:|---|
 | 署名検証に失敗 | **400** | 記録しない。`Log::warning` のみ |
+| `livemode` が `STRIPE_SECRET` のモードと不一致 | 200 | `skipped`。`Log::warning` |
 | 処理できた | 200 | `processed` |
 | 対象外のイベント種別・該当サロンなし | 200 | `skipped` |
 | 処理中に例外 | 500 | `failed`。Stripe が再送する |
 | 同一イベントの再送（`processed` / `skipped` 済み） | 200 | 何もしない |
+
+> **`livemode` 検査**（[ADR-031](decisions/ADR-031-two-environment-deployment.md)）は、
+> イベントの `livemode` と `STRIPE_SECRET` が `sk_live_` で始まるかどうかを突き合わせる。
+> 署名は通っているので 400 にはせず、`skipped` として記録し 200 を返す。
+> `whsec_` の貼り違えは署名検証をすり抜けてしまうため、**DB が書き換わる前に止められる検査はこれだけ**である。
+> `livemode` を持たないイベント（正規の Stripe イベントではない）も不一致として扱う。
 
 署名検証は `Stripe-Signature` ヘッダの `t` と `v1` を解析し、
 `HMAC-SHA256("{t}.{payload}", whsec)` を `hash_equals` で比較したうえで、
@@ -351,7 +466,7 @@ Price ID が抜けている場合は `Lite      Price ID 未設定` のように
 
 ## 8. テストカード
 
-**DEV でも必ず Stripe Test Mode を経由する。** 「任意のカード番号を独自ロジックで通す」実装は禁止。
+**local でも develop でも必ず Stripe Test Mode を経由する。** 「任意のカード番号を独自ロジックで通す」実装は禁止。
 自前の判定を挟むと、3DS・カード拒否・残高不足といった**本番でしか起きない分岐がテストできず**、
 本番で初めて壊れる。カード番号がアプリのコードに触れる設計そのものを作らない。
 
@@ -377,8 +492,11 @@ Price ID が抜けている場合は `Lite      Price ID 未設定` のように
 
 ## 9. 手動での動作確認
 
-DEV で以下を上から順に通す。`stripe listen` を起動したまま行い、
+local で以下を上から順に通す。`stripe listen` を起動したまま行い、
 そのターミナルに `checkout.session.completed [200]` のように**転送結果が出ることを毎回確認する**。
+
+develop でも同じ流れを一度は通す。転送結果の代わりに、Stripe ダッシュボード（sandbox）の
+Webhook 送信ログで 200 が返っていることを確認する。
 
 ### 9-1. 契約開始
 
@@ -494,13 +612,18 @@ curl -i -X POST http://localhost:8000/api/webhooks/stripe \
 - [ ] 本番の Webhook エンドポイントを **Live Mode に登録**した。
       URL は `https://<api>/api/webhooks/stripe` で、**HTTPS** であること
 - [ ] 本番の `STRIPE_WEBHOOK_SECRET` に**そのエンドポイントの** `whsec_...` を設定した
-      （DEV の Stripe CLI の値ではない）
+      （local の Stripe CLI の値でも、develop の sandbox の値でもない）
 - [ ] `FRONTEND_URL` が本番のフロントURLになっている（Checkout の戻り先が localhost になっていないか）
 - [ ] `STRIPE_ENFORCE_MODE` を false にしていない
 - [ ] 再デプロイ後、本番で `php artisan stripe:check` を実行し、
       `APP_ENV: production` / `想定モード: live` / すべて live と表示されること
 - [ ] `subscriptions` のバックフィルが効いており、既存サロンが機能を失っていないこと
 - [ ] Stripe ダッシュボード（Live）の Webhook で**送信試行が 200 を返している**こと
+- [ ] 本番の `STRIPE_ENFORCE_MODE` が `true` で、`APP_ENV` が `production` であること
+      （develop の `staging` を本番へ持ち込んでいないか）
+
+> develop 環境の Stripe セットアップと確認手順は
+> [runbook-develop-env.md](runbook-develop-env.md) の STEP 3 / STEP 8 / STEP 12 にまとめてある。
 
 ### 本番での決済確認
 
