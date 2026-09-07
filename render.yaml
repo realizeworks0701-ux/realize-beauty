@@ -6,7 +6,10 @@ databases:
   - name: realize-beauty-db
     databaseName: realize_beauty
     user: realize_beauty
-    plan: free # 無料枠は期限あり. 本番運用時は有料プランへ
+    # plan は意図的に書かない。Blueprint 同期はファイル全体を適用してダッシュボードの
+    # 設定を上書きするため、実態とずれた値を書くと本番DBを降格させる。
+    # 仕様上、既存リソースで plan を省略すると現行プランが保持される。
+    # https://render.com/docs/blueprint-spec
 
 services:
   - type: web
@@ -14,7 +17,10 @@ services:
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: free
+    # plan は意図的に書かない（databases 側のコメントと同じ理由）。
+    # branch は develop サービスを足すため明示する。省略時はリポジトリの
+    # 既定ブランチを指す暗黙の挙動になり、兄弟サービスが増えると読み解けない。
+    branch: main
     healthCheckPath: /up
     envVars:
       - key: APP_NAME
@@ -23,6 +29,9 @@ services:
         value: production
       - key: APP_DEBUG
         value: false
+      # 利用者に見えるバリデーションメッセージは日本語で返す（lang/ja）
+      - key: APP_LOCALE
+        value: ja
       # php artisan key:generate --show で生成した値を貼る
       - key: APP_KEY
         sync: false
