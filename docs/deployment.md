@@ -73,9 +73,13 @@ develop 環境（デモ兼先行検証、`develop` ブランチ）の構築は
 
    > **Deploy command は `--env=""` を付ける。** `wrangler.jsonc` が `env`（develop）を
    > 定義しているため、引数なしの `wrangler deploy` は「環境が定義されているのに対象が
-   > 指定されていない」という警告を出す（非致命的だがログが読みにくくなる）。
-   > **`--env production` は使わない** —— `realize-beauty-production` という別の Worker を
-   > 新規作成してしまう。`--env=""` は警告を出さず、Worker 名 `realize-beauty` に解決される。
+   > 指定されていない」という警告を出す（デプロイは成功するが、毎回ログに残る）。
+   > `--env=""` は「トップレベルの設定を使う」という明示になり、警告が出ない。
+   >
+   > **`--env production` は使えない。** `env.production` の節が無いため、wrangler は
+   > 設定の読み込み段階で `No environment found in configuration with name "production".`
+   > を出して異常終了する（終了コード 1）。詳しくは
+   > [runbook-develop-env.md](runbook-develop-env.md) STEP 6。
 
 3. ビルド変数:
    - `VITE_API_BASE_URL` = `https://<api>/api/v1`（Render のAPI URL + `/api/v1`）

@@ -14,8 +14,8 @@ Accepted
 
 ## Context
 
-[ADR-022](ADR-022-deployment.md) で用意したデプロイ先は本番の1つだけで、本番公開（2026-07-22）以降も
-そのまま運用してきた。その結果、次のいずれも実顧客のデータが入った環境で行うしかない状態にある。
+[ADR-022](ADR-022-deployment.md) で用意したデプロイ先は本番の1つだけで、公開後もそのまま
+運用してきた。その結果、次のいずれも実顧客のデータが入った環境で行うしかない状態にある。
 
 - 見込み客に画面を見せる。空のアカウントでは何も伝わらないため、実データの画面を見せることになる。
 - 未リリースのコードを、ローカル以外で動かして確かめる。
@@ -41,9 +41,9 @@ MVP 段階の運用体制（個人開発・追加課金なし）では1つに載
   同期前の差分確認画面がない。つまり develop サービスを追記して push した同じ同期で、本番の
   Postgres が 256MB へ落ち、「作成30日で失効 → 猶予14日 → 削除」の経路に乗る。
 - **`APP_ENV` が Stripe のモードを決めている。** `StripeClient::assertModeMatchesEnvironment()` は
-  `app()->environment('production')` の二値判定で、production なら Live キー以外を、
-  production 以外なら Live キーを拒否する。develop をテストモードにする手段は
-  `APP_ENV` を production 以外にすることしかない。
+  `app()->environment('production')` の二値判定で、production では `sk_test_` で始まる秘密鍵を、
+  production 以外では `sk_live_` で始まる秘密鍵を拒否する（未設定はどちらでも拒否）。
+  develop をテストモードにする手段は `APP_ENV` を production 以外にすることしかない。
 - **キューワーカーがどの環境にも存在しない。** 既定の `database` ドライバではジョブが `jobs` テーブルに
   溜まったまま実行されない。かといって `sync` にすると、`PublicBookingService` が `DB::transaction` の
   内側で dispatch している LINE 送信ジョブが**コミット後のコールバックの中で同期実行される**。
@@ -88,6 +88,11 @@ develop は DB・オブジェクトストレージ・Stripe・LINE・Google・Op
 `.github/workflows/ci.yml` の push トリガに `develop` を追加した（`pull_request` は元から全ブランチが対象）。
 
 **`main` への直接コミットは、この構成では本番への直接デプロイを意味する。**
+そのため `main` には**ブランチ保護（PR 必須・CI の通過必須）をかける**。
+本 ADR の時点で `main` の直近20コミットにマージコミットは1つも無く、ADR-010 と
+`CONTRIBUTING.md` の「main へ直接コミットしない」は実際には守られていない。
+2環境に分けた以上、これは規約ではなく本番の安全装置になる。設定は GitHub 側の手作業で、
+[runbook-develop-env.md](../runbook-develop-env.md) STEP 0.5 で行う。
 
 ### 2. develop の `APP_ENV` は `staging` にする
 
@@ -121,7 +126,8 @@ Neon の無料プランは 0.5GB ストレージ / 100 CU 時間・月で**期�
 - リージョンは **AWS Singapore**。Render に日本リージョンがなく、Tokyo に置くとアプリ⇔DB が
   約70ms 離れる。Laravel は1リクエストで多数のクエリを投げるため、同じ側に寄せる。
 - 接続は**直接エンドポイント**（ホスト名に `-pooler` を含まないもの）を使う。
-  アプリがセッションで `search_path` と時刻を設定するため。
+  `config/database.php` の pgsql 接続が `search_path` を持ち、接続ごとにセッションへ
+  設定するため（プーラーはセッション状態を前提にできない）。
 - Render の `fromDatabase` 参照は使えないので `DB_URL` を渡す。`DB_SSLMODE=require` を
   明示し、接続文字列のクエリと config の既定値（`prefer`）が競合しないようにする。
 
@@ -230,12 +236,19 @@ php artisan demo:reset [--plan=lite|standard|pro] [--force --expect-database=<na
 wrangler が `realize-beauty-develop` を導出するので書かない。`assets` と `compatibility_date` は
 継承されるキーなので env ブロックに再掲しない（再掲は差異の発生源になる）。
 
-- `wrangler` を devDependency に固定した。Workers Builds は package.json の wrangler を使うため、
-  未指定だとビルドごとにその日の `npx wrangler` が引かれる。
+- `wrangler` を devDependency に加えた（`^4.129.0`。版を実際に固定するのは `package-lock.json`）。
+  Workers Builds は package.json の wrangler を使うため、未指定だとビルドごとに
+  その日の `npx wrangler` が引かれる。
 - **env を定義した以上、本番の deploy は `wrangler deploy --env=""` と書く。** 引数なしの
-  `wrangler deploy` は「環境が定義されているのに対象が指定されていない」と警告し、
-  `--env production` は `realize-beauty-production` という**別の Worker** を作ってしまう。
-  `--env=""` は警告を出さず、Worker 名 `realize-beauty` に解決される。
+  `wrangler deploy` は「環境が定義されているのに対象が指定されていない」と警告する
+  （デプロイ自体は成功する）。`--env=""` は「トップレベルの設定を使う」という明示になり、
+  警告が出ない。wrangler の警告文自身がこの書き方を勧めている。
+  **`--env production` は使えない。** `wrangler.jsonc` に `env.production` の節が無いため、
+  wrangler は設定の読み込み段階で
+  `No environment found in configuration with name "production".` を出して異常終了する
+  （wrangler 4.129.0 / 終了コード 1 で確認）。仮に `env.production` を足せば通るようになるが、
+  今度は wrangler が env 名から `realize-beauty-production` という**別の Worker 名**を導出する。
+  どちらにしても書かない。
 - **非 production ブランチのビルドは有効にしない。** 既定の `wrangler versions upload` は
   バージョンごとに別ホスト名を払い出し、完全一致の CORS 許可リストが毎回弾く。
 - `VITE_ENV_LABEL` が設定されているときだけ、`EnvBadge` が画面上部にバッジを描画する

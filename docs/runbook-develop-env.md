@@ -64,7 +64,7 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 2. プロジェクトを **AWS Singapore (`ap-southeast-1`)** に作成。
    - Render に日本リージョンがないため、Tokyo に置くとアプリ⇔DB が約70ms 離れる。Laravel は1リクエストで多数のクエリを投げるので、Singapore に揃える方が体感が速い。
 3. データベース名は `realize_beauty_develop` にする。
-4. 接続文字列をコピーする。**プーラー経由（ホスト名に `-pooler` が入るもの）ではなく、直接エンドポイントを使う。** アプリがセッションで `search_path` と時刻設定を行うため。
+4. 接続文字列をコピーする。**プーラー経由（ホスト名に `-pooler` が入るもの）ではなく、直接エンドポイントを使う。** `config/database.php` の pgsql 接続が `search_path` を持ち、接続ごとにセッションへ設定するため。
 
    ```
    postgresql://<user>:<password>@ep-xxxx.ap-southeast-1.aws.neon.tech/realize_beauty_develop?sslmode=require
@@ -185,7 +185,17 @@ cd backend && php artisan key:generate --show
 
 `--env=""`（空文字）は「トップレベルの設定を使う」という明示になり、警告が出ず、Worker 名も `realize-beauty` のままに解決される（終了コード 0 で確認済み）。
 
-> **`--env production` は使わないこと。** wrangler は env 名から Worker 名を導出するため、`realize-beauty-production` という**別の Worker が新規に作られる**。本番のトラフィックは既存の `realize-beauty` に向いたままなので、デプロイしたつもりで何も反映されない。
+> **`--env production` は使えない。** `wrangler.jsonc` に `env.production` の節が無いため、wrangler は設定の読み込み段階で止まり、**終了コード 1 で失敗する**（デプロイは走らない）。
+>
+> ```
+> ✘ [ERROR] Processing wrangler.jsonc configuration:
+>
+>     - No environment found in configuration with name "production".
+>       Before using `--env=production` there should be an equivalent environment section in the configuration.
+>       The available configured environment names are: ["develop"]
+> ```
+>
+> 静かに間違った先へ出るのではなく、その場で落ちる。仮に `env.production` の節を足せば通るようになるが、そのときは wrangler が env 名から `realize-beauty-production` という**別の Worker 名を導出する**。節を足さず、`--env=""` を使うこと。
 
 ローカルからの手動デプロイも同じで、本番は `npm run deploy`（= `wrangler deploy --env=""`）、develop は `npm run deploy:develop`（= `wrangler deploy --env develop`）を使う。
 
