@@ -2,14 +2,25 @@
 # 使い方: Render ダッシュボード → New → Blueprint → このリポジトリを選択。
 # sync: false の変数はデプロイ後にダッシュボードで手入力する（機密情報）。
 
+# 以下の値は 2026-09-07 にダッシュボードの Generate Blueprint で書き出した実設定と
+# 突き合わせて確定させた。Blueprint 同期はファイル全体を適用してダッシュボードの設定を
+# 上書きするため、実態とずれた値を書くと本番を壊す。変更するときは必ず先に突き合わせること
+# （手順は docs/runbook-develop-env.md の STEP 0）。
 databases:
   - name: realize-beauty-db
     databaseName: realize_beauty
     user: realize_beauty
-    # plan は意図的に書かない。Blueprint 同期はファイル全体を適用してダッシュボードの
-    # 設定を上書きするため、実態とずれた値を書くと本番DBを降格させる。
-    # 仕様上、既存リソースで plan を省略すると現行プランが保持される。
-    # https://render.com/docs/blueprint-spec
+    plan: 0.1c-256mb
+    # region は作成後に変更できない。実態と同じ値を明示する
+    region: oregon
+    # 縮小できない一方向の値。実態と同じにしておく
+    diskSizeGB: 1
+    postgresMajorVersion: "18"
+    # !! 全インターネットに開いている。ローカルから DB_URL で運用コマンドを叩く運用
+    #    （Shell が無いため）に必要ではあるが範囲が最大。固定IPを用意できたら絞ること。
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
 
 services:
   - type: web
@@ -17,10 +28,12 @@ services:
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    # plan は意図的に書かない（databases 側のコメントと同じ理由）。
+    plan: 0.5c-512mb
+    region: oregon
     # branch は develop サービスを足すため明示する。省略時はリポジトリの
     # 既定ブランチを指す暗黙の挙動になり、兄弟サービスが増えると読み解けない。
     branch: main
+    autoDeployTrigger: commit
     healthCheckPath: /up
     envVars:
       - key: APP_NAME
@@ -28,7 +41,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_DEBUG
-        value: false
+        value: 'false'
       # 利用者に見えるバリデーションメッセージは日本語で返す（lang/ja）
       - key: APP_LOCALE
         value: ja
@@ -65,12 +78,20 @@ services:
         value: '60'
 
       # DB接続のTLS要求。既定の prefer はサーバがTLSを提供しないと平文にフォールバックする。
-      # !! 未検証のまま有効化すると entrypoint の `set -e` + `migrate --force` で起動不能＝全断する
-      #    （ローカルのTLS無効postgresで ExitCode=1 を再現済み）。
-      #    docs/runbook-hardening.md の手順1で疎通確認したうえで、以下のコメントを外して再デプロイするか
-      #    Render ダッシュボードの Environment で DB_SSLMODE=require を設定すること。
-      # - key: DB_SSLMODE
-      #   value: require
+      # 2026-09-07 の実設定突き合わせで、本番には既に require が入っていることを確認した
+      # （このファイルは長らくコメントアウトのままだった）。実態に合わせて明示する。
+      - key: DB_SSLMODE
+        value: require
+
+      # 本番は長らく sync だった。sync はジョブの例外を再スローするため、LINE の送信が
+      # 失敗すると DB::transaction を抜けて予約APIが 500 を返す。予約行は保存済みなので、
+      # 利用者には「失敗した」と見えて再送信される（PublicBookingService.php:135 の
+      # afterCommit dispatch → SendBookingConfirmationJob:71 の再スロー →
+      # SyncQueue::handleException の throw）。LineClient はタイムアウトも例外に変換する。
+      # deferred はレスポンス送出後に同一プロセスで実行するため、送信失敗はログに落ちるだけになる。
+      # ワーカーを立てるまでの措置で、根本解決は type: worker の追加（runbook-hardening §6）。
+      - key: QUEUE_CONNECTION
+        value: deferred
 
       - key: DB_CONNECTION
         value: pgsql
@@ -160,6 +181,11 @@ services:
     dockerfilePath: ./Dockerfile
     # 新規リソースは plan を省略すると 0.5c-512mb（有料）になる。ここは明示する。
     plan: free
+    # 本番は oregon だが develop は singapore に置く。develop は日本の見込み客に
+    # 見せるデモであり、Oregon だと太平洋を往復して体感が明確に遅くなる。
+    # Neon のプロジェクトも AWS Singapore に作り、DB との往復を同一リージョン内に収める。
+    # region は作成後に変更できないので、作る前に確認すること。
+    region: singapore
     branch: develop
     healthCheckPath: /up
     envVars:
@@ -173,7 +199,7 @@ services:
         value: staging
       # staging でも既定は false だが、見込み客に見せる環境なので明示する
       - key: APP_DEBUG
-        value: false
+        value: 'false'
       - key: APP_LOCALE
         value: ja
       # 本番とは必ず別の値にする。鍵を分けておけば、万一本番のDBダンプを入れても
