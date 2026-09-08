@@ -220,10 +220,68 @@ develop サービスの設定変更であっても同じで、develop 環境で�
 
 **本番バケットは共用しない。** R2 はバケット単位の課金がないので、分けても費用は変わらない。
 
-1. R2 → **Create bucket** → `realize-beauty-photos-develop`。
-2. 公開アクセスは**有効にしない**（本番と同じく署名付き URL で配る）。
-3. **このバケットにだけスコープした API トークン**を発行する。本番バケットの読み書き権限を含めないこと。
-4. アクセスキー ID / シークレット / エンドポイント（`https://<accountid>.r2.cloudflarestorage.com`）を控える。
+### バケットを作る
+
+`https://dash.cloudflare.com/?to=/:account/r2/overview` を開く（アカウント ID を手元に持っていなくても
+`:account` を Cloudflare が解決する）。左ペインからたどる場合は **Storage & databases → R2 Object Storage**。
+ドメインの Overview に居ると出てこない。R2 はアカウント単位の機能なので、アカウントの階層まで上がること。
+
+1. **Create bucket** を押す。
+2. **Bucket name**: `realize-beauty-photos-develop`。小文字・数字・ハイフンのみ、3〜63文字。
+   **R2 にバケットのリネームは無い**ので、名前は最初に決め切る。
+3. **Location**: **None（自動配置）のままにする。** ロケーションヒントは「best effort であり保証ではない」と
+   ドキュメントにあり、しかも写真は署名付き URL で利用者のブラウザが直接取りに行くので、アプリ側の
+   リージョンとは関係しない。**本番バケットと条件を揃えることの方が重要**で、片方だけヒントを付けると
+   後で比較したときに理由の分からない差になる。
+4. **Default storage class**: **Standard** のまま（無料枠は Standard のみ）。
+5. **Create bucket**。
+6. 作成後、**Settings → Public Development URL は有効にしない。** 触らなければ非公開のままで本番と揃う。
+
+> **Jurisdiction（データ所在地）は設定しない。** これはヒントと違って変更不可の強い制約で、しかも
+> 専用の別ホスト（`https://<id>.eu.r2.cloudflarestorage.com`）でしかアクセスできなくなる。
+> 日本向けの選択肢は無く、設定すると develop だけ `R2_ENDPOINT` の形が変わって混乱する。
+> 作成フォームに出てこなければそれが正常。
+
+### バケット1つだけに絞った API トークンを作る
+
+**R2 のトークン管理画面を使うこと。** アカウント全体の API Tokens ページ（`/profile/api-tokens`）にも
+「Workers R2 Storage」権限があるが、あちらが払い出すのは**ベアラートークンで、S3 のアクセスキーの
+組ではない**。用途が違う。
+
+1. `https://dash.cloudflare.com/<ACCOUNT_ID>/r2/api-tokens` を開く。R2 の Overview 右側の
+   **Account details** パネルにある **API Tokens → Manage** からも行ける。
+2. **Create API token**。**Create Account API token** を選ぶ（Super Administrator 権限が要る）。
+   User API token は自分の在籍に紐づいて消えるので、Render に持たせる用途には向かない。
+3. **Token name**: `realize-beauty-develop-r2` など。
+4. **Permissions**: **Object Read & Write** を選ぶ。
+   - Laravel が必要とするのは PutObject / GetObject / DeleteObject / ListObjectsV2 と署名付き URL の生成だけで、
+     バケットの作成権限は要らない。
+   - **Admin 系の2つはバケットに絞り込めない**（構造上アカウント全体になる）。ここを間違えると
+     develop のトークンで本番バケットを消せてしまう。
+5. **Specify bucket(s)**: 既定は **Apply to all buckets in this account**。
+   **Apply to specific buckets only** に切り替え、`realize-beauty-photos-develop` だけを選ぶ。
+   **送信前に、選択チップに本番バケットが入っていないことを目で確認する。**
+6. **TTL**: ローテーション運用が無いなら **Forever**。
+7. **Client IP Address Filtering**: **空のままにする。** Render の送信元 IP はこのプランでは固定されないため、
+   ここを設定すると R2 が静かに 403 を返し、資格情報の間違いにしか見えない障害になる。
+8. 作成すると **Access Key ID** と **Secret Access Key** が表示される。**Secret は一度しか表示されない。**
+
+### 控える値
+
+| 画面の表示 | 環境変数 |
+|---|---|
+| Access Key ID | `R2_ACCESS_KEY_ID` |
+| Secret Access Key（一度きり） | `R2_SECRET_ACCESS_KEY` |
+| バケット名 | `R2_BUCKET` |
+| `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` | `R2_ENDPOINT` |
+| （非公開バケットなので空でよい） | `R2_PUBLIC_URL` |
+
+アカウント ID は R2 Overview の **Account details** パネル、またはダッシュボード URL の
+`dash.cloudflare.com/<ACCOUNT_ID>/...` の部分。エンドポイントに**バケット名は含めない**
+（`config/filesystems.php` が `use_path_style_endpoint: true` なので、パスとして付く）。
+
+`R2_PUBLIC_URL` は本番でも空運用で、写真は `temporaryUrl()` の署名付き URL で配っている。
+Render の入力欄は空のままでよい。
 
 ---
 
@@ -231,13 +289,85 @@ develop サービスの設定変更であっても同じで、develop 環境で�
 
 **必ず「named sandbox」を使う。** レガシーのテストモードは Dashboard 設定の一部を Live と共有するため、テスト側のポータル設定をいじると本番側が変わりうる。
 
-1. Stripe ダッシュボード右上のアカウント切替 → **Sandboxes** → 新規 sandbox を作成（名前は `develop` など）。
-2. その sandbox で **商品と価格を3つ**作る（Lite / Standard / Pro）。通貨 **JPY**、**継続（recurring）**。金額は本番と同じにする。`price_xxx` を3つ控える。
-3. **カスタマーポータルの設定を保存する。** 設定 → 支払い → カスタマーポータル → 内容を確認して**保存**を押す。
-   - これを忘れると「お支払い情報の変更」ボタンが動かない。Stripe が 400 を返し、アプリ側は現状 **英語の "Server Error"** を出す（この見え方はコード側で日本語化する）。
-   - Live 側の設定は sandbox に引き継がれない。**別々に保存が必要。**
-4. API キー（`sk_test_...` / `pk_test_...`）を控える。
-5. Webhook エンドポイントは **STEP 8**（develop API の URL が確定してから）。
+Stripe は「sandbox」を試験環境の総称として使うようになった。アカウントには**消せない
+レガシーの test mode sandbox** が1つ常にあり、それとは別に**名前付き sandbox を5つまで**作れる。
+レガシー側は危険で、ドキュメントがこう書いている:
+
+> "If you change settings in the Dashboard while in the *test mode sandbox*, you might also change them
+> in live mode. ... If you don't see the notification, **assume any changes made in the test mode sandbox
+> affect live mode settings**."
+
+警告が出ていないことは安全の証明にならない、という既定拒否の書き方である。共有される設定の一覧は
+公開されていないので、**読んで避けることができない。名前付き sandbox を使うこと。**
+
+### sandbox を作る
+
+1. ダッシュボードの**アカウント切替（account picker）**をクリック → **Switch to sandbox** → **Create sandbox**。
+   `https://dashboard.stripe.com/sandboxes` を直接開いて **Create** でもよい。
+2. **Name**: `realize-beauty-dev`。
+3. **Copy account** ではなく **Create an account from scratch** を選ぶ。
+   Copy account は live の決済手段や入金設定まで持ち込む一方、**カスタマーポータルのドメインや
+   Public details は元々コピーされない**ので、こちらを選んでも手間は変わらない。
+4. **入ったら画面上部のバナーで sandbox 名を確認する。** ここを取り違えると本番設定を触る。
+5. 新規 sandbox は既定で **Private**（管理者のみ）。他の人も入るなら Sandboxes ページの ⋯ →
+   **Change access** で変更する。
+
+### 商品と価格を3つ作る（Lite / Standard / Pro）
+
+**sandbox のバナーが出ていることを確認してから。** **More → Product catalog → + Add product**。
+
+- **Pricing model** = Flat-rate、**Recurring**、**Billing period** = Monthly
+- 通貨は **JPY**
+- **JPY はゼロ十進通貨。`3000` と入れると ¥3,000 であって ¥30 ではない。**
+  100倍間違えても画面上はもっともらしく見える。最低請求額は ¥50。
+- **Include tax in price** は後から変えられない。消費税の扱いを決めてから作る。
+
+`price_...` は Product catalog で商品を開いた **Pricing** セクションに出る。API で作る方が確実で速い:
+
+```sh
+curl https://api.stripe.com/v1/products -u "sk_test_...:" \
+  -d "name=Realize Beauty Lite" \
+  -d "default_price_data[unit_amount]=3000" \
+  -d "default_price_data[currency]=jpy" \
+  -d "default_price_data[recurring][interval]=month" \
+  -d "expand[]=default_price"
+```
+
+### カスタマーポータルの設定を保存する（忘れやすい）
+
+**Settings → Billing → Customer portal**（sandbox 内で `https://dashboard.stripe.com/test/settings/billing/portal`）。
+
+1. **Ways to get started** の **Activate link** を押す。
+2. 必要な項目を設定する。
+3. **Save を押す。ここが本体。** 保存して初めて既定の `bpc_...` 設定が生成され、
+   `/v1/billing_portal/sessions` がそれにフォールバックできるようになる。
+
+**Headline** と **Business name** が必須。Business name はこの画面ではなく
+**Settings → Business → Public details** にあり、from scratch で作った sandbox には入っていないので先に埋める。
+
+保存を忘れると、ポータルを開こうとした時点で Stripe が **400** と次のメッセージを返す:
+
+> "No configuration provided and your test mode default configuration has not been created."
+
+アプリはこれを `StripeApiException` として **502「お支払いサービスに接続できませんでした」** で返す。
+**`php artisan stripe:check` は env の静的検査なので、この保存漏れを検出できない。**
+デモの前に実際にボタンを押して確かめること。
+
+### API キーを控える
+
+sandbox 内の **API keys** ページ。sandbox では secret key もそのまま表示される（live のような
+メール確認の手順が無い）。
+
+**キーの接頭辞は名前付き sandbox でも `sk_test_` / `pk_test_` / `rk_test_`** で、アプリの
+`StripeClient::configuredMode()` はこれを受理する。専用の別接頭辞は存在しないので、コード側の変更は要らない。
+
+Webhook エンドポイントは **STEP 8**（develop API の URL が確定してから）。
+
+> **デモを長く使うなら知っておくこと。** sandbox で作られたサブスクリプションは
+> **90日で自動キャンセル**され、さらに30日後にオブジェクトごと削除される。予告もメールも無い。
+> 3か月後に「なぜかデモの契約が消えている」となるのはこれ。
+>
+> **sandbox の削除は取り消せない。** `price_...` も一緒に消え、参照している環境変数が全部壊れる。
 
 ### 参考: 本番の Stripe はまだ未設定
 
