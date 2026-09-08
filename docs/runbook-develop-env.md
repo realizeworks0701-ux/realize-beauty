@@ -289,40 +289,76 @@ Render の入力欄は空のままでよい。
 
 **必ず「named sandbox」を使う。** レガシーのテストモードは Dashboard 設定の一部を Live と共有するため、テスト側のポータル設定をいじると本番側が変わりうる。
 
-Stripe は「sandbox」を試験環境の総称として使うようになった。アカウントには**消せない
-レガシーの test mode sandbox** が1つ常にあり、それとは別に**名前付き sandbox を5つまで**作れる。
-レガシー側は危険で、ドキュメントがこう書いている:
+Stripe は「サンドボックス」を試験環境の総称として使うようになった。アカウントには**消せない
+「テスト環境のサンドボックス」**（レガシーのテストモード）が1つ常にあり、それとは別に
+**名前付きサンドボックスを5つまで**作れる。レガシー側は危険で、日本語ドキュメントがこう書いている:
 
-> "If you change settings in the Dashboard while in the *test mode sandbox*, you might also change them
-> in live mode. ... If you don't see the notification, **assume any changes made in the test mode sandbox
-> affect live mode settings**."
+> 「ダッシュボードで test mode sandboxes を使用しているときに設定を変更すると、**本番環境の設定も
+> 変更される可能性があります**。（…）通知が表示されない場合は、テスト環境のサンドボックスで加えた
+> 変更は本番環境の設定に影響すると考えてください」
+> — [testing-use-cases（日本語）](https://docs.stripe.com/testing-use-cases?locale=ja-JP)
 
 警告が出ていないことは安全の証明にならない、という既定拒否の書き方である。共有される設定の一覧は
-公開されていないので、**読んで避けることができない。名前付き sandbox を使うこと。**
+公開されていないので、**読んで避けることができない。名前付きサンドボックスを使うこと。**
 
-### sandbox を作る
+> **日本語ドキュメントの URL は `docs.stripe.com/ja-jp/...` ではない**（404 になる）。
+> `docs.stripe.com/<path>?locale=ja-JP` が正しい形式。
 
-1. ダッシュボードの**アカウント切替（account picker）**をクリック → **Switch to sandbox** → **Create sandbox**。
-   `https://dashboard.stripe.com/sandboxes` を直接開いて **Create** でもよい。
-2. **Name**: `realize-beauty-dev`。
-3. **Copy account** ではなく **Create an account from scratch** を選ぶ。
-   Copy account は live の決済手段や入金設定まで持ち込む一方、**カスタマーポータルのドメインや
-   Public details は元々コピーされない**ので、こちらを選んでも手間は変わらない。
-4. **入ったら画面上部のバナーで sandbox 名を確認する。** ここを取り違えると本番設定を触る。
-5. 新規 sandbox は既定で **Private**（管理者のみ）。他の人も入るなら Sandboxes ページの ⋯ →
-   **Change access** で変更する。
+### どちらに入っているかの見分け方
+
+**`/test/` の有無では判別できない。** 公式のディープリンク仕様がこう定めている:
+
+> 「**MODE**: サンドボックス（テスト環境のサンドボックスを含む）には `test` を使用するか、
+> 本番環境では値を省略します」
+> — [stripe-apps/deep-links](https://docs.stripe.com/stripe-apps/deep-links)
+
+つまり `dashboard.stripe.com/acct_xxx/test/...` は名前付きサンドボックスでもこの形になる。
+
+**判定はアカウント ID で行う。** 名前付きサンドボックスは**本番とは別の `acct_` を持つ**。
+
+| 環境 | URL の形 | 判定 |
+|---|---|---|
+| 本番 | `dashboard.stripe.com/<page>` | `/test/` が無い |
+| テスト環境のサンドボックス（レガシー） | `dashboard.stripe.com/acct_本番ID/test/<page>` | `acct_` が**本番と同じ** |
+| 名前付きサンドボックス | `dashboard.stripe.com/acct_別ID/test/<page>` | `acct_` が**本番と違う** |
+| `~` 形式 | `dashboard.stripe.com/~/test/<page>` | **判定不能**（`~` は現在のアカウントのプレースホルダ） |
+
+画面側では、左上に**「サンドボックス」**のバナーと**「本番環境に切り替える」**ボタンが出て、
+アカウント切替にサンドボックス名が表示される。
+
+### サンドボックスを作る
+
+1. アカウント切替（画面左上）→ **サンドボックスに切り替える** → **サンドボックスを作成**。
+   `https://dashboard.stripe.com/sandboxes` を直接開いてもよい。
+2. **名前**: `realize-beauty-dev` など。
+3. **アカウントをコピー** ではなく **アカウントを最初から作成** を選ぶ。
+   コピーは本番の決済手段や入金設定まで持ち込む一方、**カスタマーポータルのドメインや公開情報は
+   元々コピーされない**ので、選んでも手間は変わらない。
+4. 入ったら**バナーとアカウント切替でサンドボックス名を確認する。**
+5. 新規サンドボックスは既定で**プライベート**（管理者のみ）。他の人も入るなら
+   サンドボックス一覧の ⋯ → **アクセス権を変更** → **開発者** または **すべてのチームメンバー** → **保存**。
 
 ### 商品と価格を3つ作る（Lite / Standard / Pro）
 
-**sandbox のバナーが出ていることを確認してから。** **More → Product catalog → + Add product**。
+**サンドボックスのバナーが出ていることを確認してから。**
+ナビの **その他** → **商品カタログ** → **+商品を追加**。
 
-- **Pricing model** = Flat-rate、**Recurring**、**Billing period** = Monthly
-- 通貨は **JPY**
-- **JPY はゼロ十進通貨。`3000` と入れると ¥3,000 であって ¥30 ではない。**
+| 項目 | 設定 |
+|---|---|
+| **名前** | `Realize Beauty Lite` など |
+| **説明** | 決済画面と**カスタマーポータルに表示される**ので埋めておく |
+| **料金体系モデル** | **定額の料金体系** |
+| 課金タイプ | **継続**（**1 回限り** ではない） |
+| 通貨 | **JPY** |
+| **請求期間** | 月次 |
+| **税込み価格** | 消費税の扱いを決めてから。**後から変更できない** |
+| **価格の説明** | 社内用。`lite` / `standard` / `pro` を入れておくと後で分かる |
+
+- **JPY はゼロ十進通貨。`3000` は ¥3,000 であって ¥30 ではない。**
   100倍間違えても画面上はもっともらしく見える。最低請求額は ¥50。
-- **Include tax in price** は後から変えられない。消費税の扱いを決めてから作る。
+- 保存ボタンも **商品を追加**。
 
-`price_...` は Product catalog で商品を開いた **Pricing** セクションに出る。API で作る方が確実で速い:
+`price_...` は商品を開いた価格の行に表示される。API で作る方が確実で速い:
 
 ```sh
 curl https://api.stripe.com/v1/products -u "sk_test_...:" \
@@ -335,17 +371,19 @@ curl https://api.stripe.com/v1/products -u "sk_test_...:" \
 
 ### カスタマーポータルの設定を保存する（忘れやすい）
 
-**Settings → Billing → Customer portal**（sandbox 内で `https://dashboard.stripe.com/test/settings/billing/portal`）。
+**設定** → **Billing**（ここは英語のまま）→ **カスタマーポータルの設定**。
+サンドボックス内で `https://dashboard.stripe.com/test/settings/billing/portal`。
 
-1. **Ways to get started** の **Activate link** を押す。
+1. **始める方法** の **リンクを有効化** を押す。
 2. 必要な項目を設定する。
-3. **Save を押す。ここが本体。** 保存して初めて既定の `bpc_...` 設定が生成され、
+3. **保存を押す。ここが本体。** 保存して初めて既定の `bpc_...` 設定が生成され、
    `/v1/billing_portal/sessions` がそれにフォールバックできるようになる。
 
-**Headline** と **Business name** が必須。Business name はこの画面ではなく
-**Settings → Business → Public details** にあり、from scratch で作った sandbox には入っていないので先に埋める。
+必須項目は **見出し** と **ビジネス名**。ビジネス名はこの画面ではなく
+**設定** → **アカウント設定** → **公開情報**（`/settings/public`）にあり、
+「最初から作成」したサンドボックスには入っていないので先に埋める。
 
-保存を忘れると、ポータルを開こうとした時点で Stripe が **400** と次のメッセージを返す:
+保存を忘れると、ポータルを開いた時点で Stripe が **400** を返す:
 
 > "No configuration provided and your test mode default configuration has not been created."
 
@@ -353,21 +391,29 @@ curl https://api.stripe.com/v1/products -u "sk_test_...:" \
 **`php artisan stripe:check` は env の静的検査なので、この保存漏れを検出できない。**
 デモの前に実際にボタンを押して確かめること。
 
+ついでに **設定** → **ブランディング** でロゴと色も入れておくとよい。ポータルは見込み客に見える画面になる。
+
 ### API キーを控える
 
-sandbox 内の **API keys** ページ。sandbox では secret key もそのまま表示される（live のような
-メール確認の手順が無い）。
+サンドボックスのトップ画面右側の **API キー** パネルにコピーボタン付きで出ている。
+一覧を見るなら **API キー** ページ（`/test/apikeys`）で、**標準キー** の下にある。
 
-**キーの接頭辞は名前付き sandbox でも `sk_test_` / `pk_test_` / `rk_test_`** で、アプリの
-`StripeClient::configuredMode()` はこれを受理する。専用の別接頭辞は存在しないので、コード側の変更は要らない。
+| 表示 | 値の形 | 環境変数 |
+|---|---|---|
+| **公開可能キー** | `pk_test_...` | `STRIPE_KEY` |
+| **シークレットキー** | `sk_test_...` | `STRIPE_SECRET` |
+
+サンドボックスではシークレットキーもそのまま表示される（本番のような **本番環境キーを表示** の
+確認手順が無い）。**接頭辞は名前付きサンドボックスでも `sk_test_` / `pk_test_`** で、アプリの
+`StripeClient::configuredMode()` はこれを受理する。コード側の変更は要らない。
 
 Webhook エンドポイントは **STEP 8**（develop API の URL が確定してから）。
 
-> **デモを長く使うなら知っておくこと。** sandbox で作られたサブスクリプションは
+> **デモを長く使うなら知っておくこと。** サンドボックスで作られたサブスクリプションは
 > **90日で自動キャンセル**され、さらに30日後にオブジェクトごと削除される。予告もメールも無い。
 > 3か月後に「なぜかデモの契約が消えている」となるのはこれ。
 >
-> **sandbox の削除は取り消せない。** `price_...` も一緒に消え、参照している環境変数が全部壊れる。
+> **サンドボックスの削除は取り消せない。** `price_...` も一緒に消え、参照している環境変数が全部壊れる。
 
 ### 参考: 本番の Stripe はまだ未設定
 
@@ -533,11 +579,23 @@ CORS は未設定なら全拒否（フェイルクローズ）なので、ここ
 
 ## STEP 8. Stripe の Webhook を登録する（develop API の URL 確定後）
 
-1. STEP 3 で作った **sandbox の中で** 開発者 → Webhook → エンドポイントを追加。
-2. URL: `https://<develop API>/api/webhooks/stripe`
-   - `/api/v1/` **配下ではない**。
-3. 送信するイベント: `checkout.session.completed` / `customer.subscription.created` / `customer.subscription.updated` / `customer.subscription.deleted` / `invoice.payment_failed` / `invoice.paid`
-4. 払い出された `whsec_...` を Render の `STRIPE_WEBHOOK_SECRET` に入れ、**再デプロイする**。
+**STEP 3 で作ったサンドボックスの中で**行う。バナーを確認すること。
+
+1. **ワークベンチ**（ナビ表記は `Workbench` の場合もある）→ **Webhook** タブ。
+   `https://dashboard.stripe.com/webhooks` を直接開いてもよい。
+2. **イベント送信先を作成**（画面によっては **新しい送信先を作成**）。
+3. 送信元は **アカウント** を選ぶ（Connect プラットフォームではないため）。
+4. API バージョンは `2024-06-20` に固定する（`STRIPE_API_VERSION` と揃えるため）。
+5. **イベントタイプ**を選ぶ。必要なのはこの6つだけ:
+   `checkout.session.completed` / `customer.subscription.created` /
+   `customer.subscription.updated` / `customer.subscription.deleted` /
+   `invoice.payment_failed` / `invoice.paid`
+6. **続行** → 送信先の種類に **Webhook エンドポイント** を選ぶ。
+7. **エンドポイント URL**: `https://<develop API>/api/webhooks/stripe`
+   - **`/api/v1/` 配下ではない。** 認証なし・throttle なしのルート。
+8. **送信先を作成する**。作成後の画面で **シークレットを表示**（既存のものは **クリックして表示**）を押し、
+   `whsec_...` をコピーする。
+9. Render の `STRIPE_WEBHOOK_SECRET` に入れ、**再デプロイする**。
 
 > **本番の `whsec_` を develop に貼らないこと。** 貼ると Live のイベントが develop の DB に適用される。両方の DB はサロン ID が 1 から始まるため、宛先は必ず存在してしまう。逆（テストの `whsec_` を本番に貼る）はもっと静かで、本番の Webhook が延々 400 を返し続け、契約状態が同期されなくなる。
 
