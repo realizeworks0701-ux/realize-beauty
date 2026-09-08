@@ -6,6 +6,47 @@
 
 ---
 
+## 進捗（2026-09-08 時点）
+
+| STEP | 内容 | 状態 |
+|---|---|---|
+| 0 | 本番を守る（プラン是正・実設定の突き合わせ） | ✅ 完了。`render.yaml` を実設定に一致させた（`a140960`）|
+| 0.5 | push の順序と `main` のブランチ保護 | ⏳ push は完了（`main`/`develop` とも `f4acbd1`）。保護ルールは設定中 |
+| 1 | Neon（develop の DB） | ✅ 完了。接続文字列を取得済み |
+| 2 | Cloudflare R2（develop の写真保管） | ⬜ **未着手** |
+| 3 | Stripe sandbox（Price ×3 / キー / ポータル保存） | ⬜ **未着手** |
+| 3.5 | develop 用 OpenAI キー | ⬜ 未着手（任意。未設定でもアプリは動く）|
+| 4 | develop 用 `APP_KEY` の生成 | ✅ 完了 |
+| 5 | Render に develop サービスを作る | ⬜ **次はここ**（STEP 2・3 を先に済ませると手戻りがない）|
+| 6 | Cloudflare に develop 用 Worker を作る | ⬜ 未着手 |
+| 7 | develop API に CORS とフロント URL を入れる | ⬜ 未着手 |
+| 8 | Stripe の Webhook 登録 | ⬜ 未着手 |
+| 9 | Google カレンダー連携 | ⬜ 未着手 |
+| 10 | LINE 連携 | ⬜ 未着手 |
+| 11 | デモデータ投入 | ⬜ 未着手 |
+| 12 | 動作確認 | ⬜ 未着手 |
+
+**確認済みの前提**
+
+- Blueprint がリンクしているブランチは **`main`**。`render.yaml` は既に `main` に載っているので、Manual Sync を押せば develop サービスが作られる。
+- Auto Sync は **No**。`render.yaml` を変更しても、Manual Sync を押すまで適用されない。
+- CI は `main` / `develop` の両方で green。ブランチ保護の必要ステータスチェックに `Backend (Laravel)` / `Frontend (Vue)` を選べる状態。
+- 本番は `oregon`、develop は `singapore` に置く（意図的に変える。理由は [ADR-031](decisions/ADR-031-two-environment-deployment.md)）。
+
+**STEP 5 に進む前に STEP 2 と STEP 3 を済ませること。** develop サービスは作成直後に初回デプロイが走り、環境変数が空なので必ず失敗する。R2 と Stripe の値を手元に揃えてから作れば、失敗は一度で済む。
+
+---
+
+## 未対応のまま残っている本番の課題
+
+develop 環境とは別件だが、試運転の前に潰す価値がある。
+
+- **本番の Stripe が6変数とも未設定**（`STRIPE_SECRET` / `STRIPE_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_*`）。`sync: false` は既存 Blueprint の更新時に無視されるため、`render.yaml` に書いても設定されない。**本番の課金は現在動かない。** ダッシュボードで手入力する。
+- **cron サービスが存在しない。** `routes/console.php` に登録された3コマンド（前日リマインダー、Google カレンダーのチャネル更新、同期窓の前進）がどの環境でも動いていない。特にチャネル更新が止まると、**外部カレンダーの予定取り込みが静かに停止し、公開予約ページが埋まっている枠を空きとして出す**。
+- **本番DBの `ipAllowList` が `0.0.0.0/0`。** Shell が無くローカルから運用コマンドを叩く運用のために必要だが、範囲が最大。固定IPを用意できたら絞る。
+
+---
+
 ## 控える値（先に空欄の表を作っておくと楽）
 
 | # | 値 | 取得する STEP | 使う場所 |
@@ -75,58 +116,89 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 
 ---
 
-## STEP 0.5. push の順序と GitHub のブランチ保護
+## STEP 0.5. GitHub のブランチ保護
 
-**順序を守ること。ブランチ保護は最後。**
+> **✅ push は完了済み**（`main` / `develop` とも `f4acbd1`）。CI も両ブランチで green のため、
+> 必要ステータスチェックを選べる状態にある。以下は保護ルールの設定手順。
 
-1. **`develop` を先に push する。**
+**保護は push の後にかけること。** 先にかけると溜まったコミットの直 push が弾かれうる。方式で挙動が違い、
+**Classic branch protection rule** は「Do not allow bypassing the above settings」が既定 OFF で管理者は
+免除されるが、**Ruleset**（今の GitHub UI が誘導する方）は bypass リストが既定で空で管理者も免除されない。
 
-   ```sh
-   git push -u origin develop
-   ```
+`https://github.com/realizeworks0701-ux/realize-beauty/settings/rules` → **New ruleset → New branch ruleset**
 
-   Blueprint が追跡しているのは `main` なので、これでは**同期は走らない**。目的は、Render が
-   `branch: develop` を解決しにくる前に ref を存在させること。**ブランチの存在は Render 側で実際に
-   検証される** — ドキュメントのエラー例が `services[0].branch (line 19, column 5): branch prod could not be found`。
+| 項目 | 設定 |
+|---|---|
+| Ruleset Name | `main protection` |
+| Enforcement status | **Active** |
+| Bypass list | **+ Add bypass** → **Repository admin** → Allow for **All** |
+| Target branches | **+ Add target** → **Include default branch**（= `main`）|
 
-2. **`main` を push する。**
+有効にするルール:
 
-   ```sh
-   git push origin main
-   ```
+- ☑ **Require a pull request before merging**
+  - Required approvals: **0**（一人開発では自分の PR を自分で承認できないため）
+  - ☑ Dismiss stale pull request approvals when new commits are pushed
+- ☑ **Require status checks to pass**
+  - ☑ Require branches to be up to date before merging
+  - **+ Add checks** で **`Backend (Laravel)`** と **`Frontend (Vue)`** を追加する。
+    **`CI` でも `backend` でもない** — ジョブの `name:` の値。
+- ☑ Restrict deletions（`main` の誤削除防止。任意）
+- ☐ **Restrict creations は入れない。** `develop` や `feature/*` を作れなくなる恐れがある。
 
-   **Blueprint 同期を起こすのはこの push だけ**（正確には「追跡ブランチへの push のうち Blueprint ファイルを
-   変更したもの」）。`realize-beauty-api-dev` が作られる。既存の本番サービスも定義を変更した扱いになるため
-   再デプロイされる。
-
-3. **両ブランチの CI が green になるのを待つ。** これは礼儀ではなく門。壊れた `main` を直 push で
-   修正できる最後の瞬間であり、次のステップの前提でもある。
-
-4. **STEP 5 に進んで develop サービスの環境変数を入れる。** `render.yaml` の修正が要ると分かった場合、
-   まだ直 push で直せる。
-
-5. **最後に `main` の保護を設定する。** リポジトリ → Settings → Rules → Rulesets → New branch ruleset。
-   - Target: `main` のみ
-   - **Require a pull request before merging**
-   - **Require status checks to pass** — 選ぶのは **`Backend (Laravel)`** と **`Frontend (Vue)`**。
-     `CI` でも `backend` でもなく、ジョブの `name:` の値。
-   - Bypass list は意識して決める。空なら自分も PR 必須になる。
-
-> **保護を先にかけると push が拒否されうる。** 方式で挙動が違う。
-> **Classic branch protection rule** は「Do not allow bypassing the above settings」が既定 OFF で、
-> リポジトリ管理者は免除される。**Ruleset**（今の GitHub UI が誘導する方）は bypass リストが既定で空で、
-> 管理者も免除されない。後者で先に保護をかけると、溜まっているコミットの直 push が弾かれる。
->
 > **必要ステータスチェックの選択肢には、過去7日に成功したチェックしか出ない。** CI がしばらく走って
-> いないと、そもそも選べない。ステップ3で green にしてから設定すること。
+> いないと選べなくなるので、その場合は何か push して green にしてから設定する。
+
+**確認**: 設定後に `git push origin main` を試す。管理者例外が効いていれば通る。弾かれたら bypass が
+入っていない。
+
+`develop` にも同じ保護を付けるなら、Target branches を **Include by pattern** → `develop` にした
+2つ目の ruleset を作る。ただし develop は日常の作業先なので、まずは `main` だけにしておくほうが動きやすい。
 
 [ADR-010](decisions/ADR-010-git-workflow.md) と [CONTRIBUTING.md](../CONTRIBUTING.md) は「main へ直接
 コミットしない」と定めているが、実際には守られてこなかった。2環境に分けた今、`main` への直接コミットは
 **本番への直接デプロイ**を意味する。
 
+### 日常の流れ（保護後）
+
+```
+feature/xxx → develop → develop環境で確認 → main → 本番へ自動デプロイ
+```
+
+**ただし `render.yaml` の変更だけはこの流れに乗らない。** Blueprint がリンクしているのは `main` で、
+かつ Auto Sync が No なので、`main` に到達したうえで **Manual Sync を押すまで適用されない**。
+develop サービスの設定変更であっても同じで、develop 環境で先に試すことはできない。
+
+混同しやすい2つの仕組みを区別すること:
+
+| | 何が起きるか | 引き金 |
+|---|---|---|
+| サービスの自動デプロイ | そのサービスの**コード**が入れ替わる | `branch:` に指定したブランチへの push（`autoDeployTrigger: commit`）|
+| Blueprint 同期 | `render.yaml` の内容がリソースに**適用**される（プラン・リージョン・環境変数・サービス追加）| **Manual Sync**（Auto Sync が No のため）|
+
+ダッシュボードで環境変数を変えたときに必要なのは Manual Sync ではなく**再デプロイ**。
+`entrypoint.sh` が起動時に `config:cache` を走らせるため、値を変えただけでは反映されない。
+
 ---
 
 ## STEP 1. Neon（develop の DB）
+
+> **✅ 完了。** 接続文字列は取得済み。以下は再構築するときの手順として残す。
+>
+> **接続文字列のパネルが「Something went wrong」で開かないとき**は、まず1分置いてリロードする
+> （新規プロジェクトは compute の起動中に接続系の画面が落ちることがある）。直らなければ CLI で迂回できる。
+> 接続文字列はプロジェクトのメタデータから組み立てられるだけで、compute が動いている必要はない。
+>
+> ```sh
+> npx neon auth
+> npx neon projects list -o json
+> npx neon connection-string --project-id <project-id> --database-name realize_beauty_develop
+> ```
+>
+> **`--pooled` を付けないのが直接エンドポイント**（既定が false）。出力にはパスワードが含まれる。
+> なお Neon の REST API のホストは `console.neon.tech/api/v2` で、`api.neon.tech` は存在しない。
+> パスワードは再発行しなくても
+> `GET /projects/{id}/branches/{branch}/roles/{role}/reveal_password` で取得できる。
 
 1. [neon.tech](https://neon.tech) でアカウントを作る。
 2. プロジェクトを **AWS Singapore (`ap-southeast-1`)** に作成する。develop の Render Web サービス
@@ -185,6 +257,8 @@ develop 用に**別の API キー**を発行する（本番キーと使用量を
 
 ## STEP 4. develop 用 `APP_KEY` を生成する
 
+> **✅ 完了。** 生成済みの `base64:...` を STEP 5 で入力する。
+
 ローカルで実行し、出力された `base64:...` を控える。**本番の APP_KEY は絶対に流用しない。**
 
 ```sh
@@ -197,11 +271,11 @@ cd backend && php artisan key:generate --show
 
 ## STEP 5. Render に develop サービスを作る
 
-こちらが `render.yaml` に develop サービスを追記して push したあと、あなたの作業。
-
-> **`render.yaml` は Blueprint が追跡しているブランチ（通常 `main`）に載らないと効かない。** feature ブランチを
-> `develop` にマージしただけでは `realize-beauty-api-dev` は作られない。Blueprint の Settings でどのブランチを
-> 追跡しているかを確認し、そのブランチへマージしてから Manual Sync すること。
+> **前提は揃っている。** `render.yaml` は `main` に載っており（`f4acbd1`）、Blueprint が
+> リンクしているのも `main`。**Manual Sync を押せば `realize-beauty-api-dev` が作られる。**
+>
+> **ただし STEP 2（R2）と STEP 3（Stripe）を先に済ませること。** 作成直後に初回デプロイが走り、
+> 環境変数が空なので必ず失敗する。値を手元に揃えてから作れば失敗は一度で済む。
 
 > **リージョンは `render.yaml` に明示済みで、本番と揃えるのが目的ではない。** 本番の Web は
 > `region: oregon`、develop の Web は `region: singapore` と書いてあり、これは意図的な違いである。
