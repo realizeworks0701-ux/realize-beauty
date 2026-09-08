@@ -29,7 +29,12 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    // SPA は全リクエストに Authorization ヘッダを付けるため、すべてがプリフライト対象になる。
+    // 既定の 0 は Access-Control-Max-Age: 0 を返し、ブラウザが結果を一切キャッシュしないので、
+    // API 呼び出し1回ごとに OPTIONS と本リクエストで2往復していた（本番実測で OPTIONS 単体 418ms）。
+    // 2時間にしておく。Chrome の上限が 7200 秒で、それ以上を返しても切り詰められるだけ。
+    // 副作用として、許可オリジンやヘッダを絞る変更は最大2時間ブラウザ側に反映されない。
+    'max_age' => 7200,
 
     'supports_credentials' => false,
 
