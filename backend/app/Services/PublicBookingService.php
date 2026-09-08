@@ -261,11 +261,19 @@ class PublicBookingService
             'phone' => $phone,
         ];
 
-        // customers.gender は NOT NULL DEFAULT 0（未回答）のため、未入力時はキー自体を渡さずDBのデフォルトに委ねる
-        foreach (['gender', 'birthday', 'email'] as $field) {
+        // birthday と email は nullable なので null をそのまま入れてよい。
+        foreach (['birthday', 'email'] as $field) {
             if (array_key_exists($field, $data)) {
                 $attributes[$field] = $data[$field];
             }
+        }
+
+        // customers.gender だけは NOT NULL DEFAULT 0（未回答）。画面の初期選択は「未設定」で、
+        // フロントはそれを null として送る（API スキーマも nullable と宣言している）。
+        // キーの有無だけで判定すると明示的な null がそのまま insert され NOT NULL 違反で 500 になるため、
+        // null は「未回答」としてキーごと落とし、DBの既定値に委ねる。
+        if (($data['gender'] ?? null) !== null) {
+            $attributes['gender'] = $data['gender'];
         }
 
         return $this->customerRepository->create($salonId, $attributes);

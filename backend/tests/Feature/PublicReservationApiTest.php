@@ -359,6 +359,29 @@ class PublicReservationApiTest extends TestCase
         $this->assertSame('hanako@example.com', $customer->email);
     }
 
+    /**
+     * 性別は任意項目で、画面の初期選択は「未設定」。フロントはそれを null として送る
+     * （docs/ui/public-booking.md、docs/api/components/schemas/public-booking.yaml も nullable と宣言）。
+     * customers.gender は NOT NULL DEFAULT 0 なので、null は「未回答」としてDBの既定に委ねる。
+     */
+    public function test_treats_a_null_gender_as_unanswered_on_first_visit(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, [
+            'is_first_visit' => true,
+            'birthday' => null,
+            'gender' => null,
+            'email' => null,
+        ]);
+
+        $response->assertCreated();
+        $customer = Customer::where('salon_id', $salon->id)->sole();
+        $this->assertSame(0, $customer->gender);
+        $this->assertNull($customer->birthday);
+        $this->assertNull($customer->email);
+    }
+
     public function test_ignores_additional_fields_when_first_visit_is_not_checked(): void
     {
         [$salon] = $this->createContext();
@@ -439,6 +462,17 @@ class PublicReservationApiTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors('is_first_visit');
+    }
+
+    public function test_returns_validation_messages_in_japanese(): void
+    {
+        [$salon] = $this->createContext();
+
+        $response = $this->book($salon, ['is_first_visit' => true, 'email' => 'not-an-email', 'name' => '']);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('errors.name.0', 'お名前は必須です。');
+        $response->assertJsonPath('errors.email.0', 'メールアドレスの形式が正しくありません。');
     }
 
     public function test_returns_422_for_a_future_birthday(): void
