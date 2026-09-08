@@ -1,26 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { AxiosError } from 'axios'
 import Button from 'primevue/button'
 import DatePicker from 'primevue/datepicker'
-import InputText from 'primevue/inputtext'
 import Skeleton from 'primevue/skeleton'
 import { useToast } from 'primevue/usetoast'
+import BookingCustomerForm from '@/components/booking/BookingCustomerForm.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import PublicLayout from '@/layouts/PublicLayout.vue'
 import { publicBookingService } from '@/services/publicBookingService'
 import { extractErrorMessage, extractFieldErrors } from '@/utils/apiError'
-import { formatNumber, formatTime, toDateString } from '@/utils/format'
+import { formatNumber, formatTime, genderLabel, toDateString } from '@/utils/format'
 import {
   bookingSelectableRange,
   buildCancelUrl,
   calcEndAtIso,
+  emptyBookingCustomerErrors,
   formatDateTimeRange,
+  hasBookingCustomerError,
+  validateBookingCustomer,
 } from '@/utils/publicBooking'
+import type { BookingCustomerFormState } from '@/utils/publicBooking'
 import type {
   AvailabilitySlot,
   PublicMenu,
+  PublicReservationRequest,
   PublicReservationResponse,
   PublicSalon,
   PublicStaff,
@@ -76,8 +81,17 @@ const slotsErrorMessage = ref('')
 const selectedSlot = ref<string | null>(null)
 const startAtError = ref('')
 
-const form = reactive({ name: '', kana: '', phone: '' })
-const fieldErrors = reactive({ name: '', kana: '', phone: '' })
+const form = ref<BookingCustomerFormState>({
+  name: '',
+  kana: '',
+  phone: '',
+  isFirstVisit: false,
+  birthday: null,
+  gender: null,
+  email: '',
+  note: '',
+})
+const fieldErrors = ref(emptyBookingCustomerErrors())
 const submitting = ref(false)
 
 const dateRange = computed(() => bookingSelectableRange())
@@ -152,30 +166,9 @@ function onDatePicked(value: Date | Date[] | (Date | null)[] | null | undefined)
 
 // ---- お客様情報・確定 ----
 
-function validateCustomerForm(): boolean {
-  fieldErrors.name =
-    form.name.trim() === ''
-      ? 'お名前を入力してください'
-      : form.name.length > 100
-        ? 'お名前は100文字以内で入力してください'
-        : ''
-  fieldErrors.kana =
-    form.kana.trim() === ''
-      ? 'フリガナを入力してください'
-      : form.kana.length > 100
-        ? 'フリガナは100文字以内で入力してください'
-        : ''
-  fieldErrors.phone =
-    form.phone.trim() === ''
-      ? '電話番号を入力してください'
-      : form.phone.length > 20
-        ? '電話番号は20文字以内で入力してください'
-        : ''
-  return fieldErrors.name === '' && fieldErrors.kana === '' && fieldErrors.phone === ''
-}
-
 function goConfirm(): void {
-  if (validateCustomerForm()) step.value = 5
+  fieldErrors.value = validateBookingCustomer(form.value)
+  if (!hasBookingCustomerError(fieldErrors.value)) step.value = 5
 }
 
 const confirmEndAt = computed(() =>
@@ -188,14 +181,23 @@ async function submitReservation(): Promise<void> {
   if (submitting.value || !selectedMenu.value || !selectedSlot.value) return
   submitting.value = true
   try {
-    completed.value = await publicBookingService.createReservation(bookingSlug.value, {
+    const customer = form.value
+    const payload: PublicReservationRequest = {
       menu_id: selectedMenu.value.id,
       user_id: selectedStaff.value?.id ?? null,
       start_at: selectedSlot.value,
-      name: form.name,
-      kana: form.kana,
-      phone: form.phone,
-    })
+      name: customer.name,
+      kana: customer.kana,
+      phone: customer.phone,
+      is_first_visit: customer.isFirstVisit,
+      note: customer.note.trim() !== '' ? customer.note.trim() : null,
+    }
+    if (customer.isFirstVisit) {
+      payload.birthday = customer.birthday ? toDateString(customer.birthday) : null
+      payload.gender = customer.gender
+      payload.email = customer.email.trim() !== '' ? customer.email.trim() : null
+    }
+    completed.value = await publicBookingService.createReservation(bookingSlug.value, payload)
   } catch (error) {
     handleSubmitError(error)
   } finally {
@@ -207,9 +209,6 @@ function handleSubmitError(error: unknown): void {
   const status = error instanceof AxiosError ? error.response?.status : undefined
   if (status === 422) {
     const errors = extractFieldErrors(error)
-    fieldErrors.name = errors.name ?? ''
-    fieldErrors.kana = errors.kana ?? ''
-    fieldErrors.phone = errors.phone ?? ''
     if (errors.start_at) {
       // 時間帯系エラー: サーバメッセージを表示し、空き枠を再取得して日時選択へ戻す
       startAtError.value = errors.start_at
@@ -218,7 +217,12 @@ function handleSubmitError(error: unknown): void {
       void fetchSlots()
       return
     }
-    if (fieldErrors.name || fieldErrors.kana || fieldErrors.phone) {
+    const customerErrors = emptyBookingCustomerErrors()
+    for (const key of Object.keys(customerErrors) as (keyof typeof customerErrors)[]) {
+      customerErrors[key] = errors[key] ?? ''
+    }
+    fieldErrors.value = customerErrors
+    if (hasBookingCustomerError(customerErrors)) {
       step.value = 4
       return
     }
@@ -469,57 +473,12 @@ async function copyText(text: string, label: string): Promise<void> {
           <!-- Step 4: お客様情報入力 -->
           <template v-else-if="step === 4">
             <h2 class="step-title">お客様情報をご入力ください</h2>
-            <form class="customer-form" novalidate @submit.prevent="goConfirm">
-              <div class="field">
-                <label class="field-label" for="booking-name">お名前</label>
-                <InputText
-                  id="booking-name"
-                  v-model="form.name"
-                  autocomplete="name"
-                  placeholder="山田 花子"
-                  maxlength="100"
-                  fluid
-                  :invalid="fieldErrors.name !== ''"
-                />
-                <small v-if="fieldErrors.name" class="field-error">
-                  <i class="pi pi-exclamation-circle" />
-                  {{ fieldErrors.name }}
-                </small>
-              </div>
-              <div class="field">
-                <label class="field-label" for="booking-kana">フリガナ</label>
-                <InputText
-                  id="booking-kana"
-                  v-model="form.kana"
-                  placeholder="ヤマダ ハナコ"
-                  maxlength="100"
-                  fluid
-                  :invalid="fieldErrors.kana !== ''"
-                />
-                <small v-if="fieldErrors.kana" class="field-error">
-                  <i class="pi pi-exclamation-circle" />
-                  {{ fieldErrors.kana }}
-                </small>
-              </div>
-              <div class="field">
-                <label class="field-label" for="booking-phone">電話番号</label>
-                <InputText
-                  id="booking-phone"
-                  v-model="form.phone"
-                  type="tel"
-                  autocomplete="tel"
-                  placeholder="09012345678"
-                  maxlength="20"
-                  fluid
-                  :invalid="fieldErrors.phone !== ''"
-                />
-                <small v-if="fieldErrors.phone" class="field-error">
-                  <i class="pi pi-exclamation-circle" />
-                  {{ fieldErrors.phone }}
-                </small>
-              </div>
-              <Button type="submit" label="次へ" icon="pi pi-arrow-right" icon-pos="right" fluid />
-            </form>
+            <BookingCustomerForm
+              v-model="form"
+              :errors="fieldErrors"
+              :submitting="submitting"
+              @submit="goConfirm"
+            />
           </template>
 
           <!-- Step 5: 確認 -->
@@ -555,6 +514,26 @@ async function copyText(text: string, label: string): Promise<void> {
               <div class="summary-row">
                 <dt>電話番号</dt>
                 <dd>{{ form.phone }}</dd>
+              </div>
+              <div v-if="form.isFirstVisit" class="summary-row">
+                <dt>ご来店</dt>
+                <dd>今回が初めて</dd>
+              </div>
+              <div v-if="form.isFirstVisit && form.birthday" class="summary-row">
+                <dt>生年月日</dt>
+                <dd>{{ toDateString(form.birthday) }}</dd>
+              </div>
+              <div v-if="form.isFirstVisit && form.gender !== null" class="summary-row">
+                <dt>性別</dt>
+                <dd>{{ genderLabel(form.gender) }}</dd>
+              </div>
+              <div v-if="form.isFirstVisit && form.email.trim() !== ''" class="summary-row">
+                <dt>メール</dt>
+                <dd>{{ form.email }}</dd>
+              </div>
+              <div v-if="form.note.trim() !== ''" class="summary-row">
+                <dt>ご要望</dt>
+                <dd>{{ form.note }}</dd>
               </div>
             </dl>
             <Button
@@ -828,13 +807,6 @@ async function copyText(text: string, label: string): Promise<void> {
   margin: 0;
   font-size: 0.88rem;
   color: var(--rb-text-muted);
-}
-
-/* ---------- お客様情報 ---------- */
-
-.customer-form {
-  display: flex;
-  flex-direction: column;
 }
 
 /* ---------- 確認・完了 ---------- */

@@ -2,15 +2,20 @@ import { describe, expect, it } from 'vitest'
 import type { BusinessHour } from '@/types'
 import { toIsoWithOffset } from './format'
 import {
+  BOOKING_NOTE_MAX_LENGTH,
   bookingSelectableRange,
   buildBookingPageUrl,
   buildCancelUrl,
   calcEndAtIso,
+  emptyBookingCustomerErrors,
   formatDateTimeRange,
+  hasBookingCustomerError,
   isWithinBookingWindow,
   listSlotStartMinutes,
   slotToIso,
+  validateBookingCustomer,
 } from './publicBooking'
+import type { BookingCustomerFormState } from './publicBooking'
 
 const businessHour = (overrides: Partial<BusinessHour> = {}): BusinessHour => ({
   day_of_week: 1,
@@ -110,6 +115,98 @@ describe('buildBookingPageUrl', () => {
   it('オリジンと booking_slug から予約ページURLを組み立てる', () => {
     expect(buildBookingPageUrl('https://example.com', 'a1b2c3d4e5f6g7h8')).toBe(
       'https://example.com/booking/a1b2c3d4e5f6g7h8',
+    )
+  })
+})
+
+const customerState = (
+  overrides: Partial<BookingCustomerFormState> = {},
+): BookingCustomerFormState => ({
+  name: '山田 花子',
+  kana: 'ヤマダ ハナコ',
+  phone: '09012345678',
+  isFirstVisit: false,
+  birthday: null,
+  gender: null,
+  email: '',
+  note: '',
+  ...overrides,
+})
+
+describe('validateBookingCustomer', () => {
+  it('必須3項目が埋まっていればエラーなし', () => {
+    expect(hasBookingCustomerError(validateBookingCustomer(customerState()))).toBe(false)
+  })
+
+  it('氏名・フリガナ・電話番号の未入力をそれぞれ検出する', () => {
+    const errors = validateBookingCustomer(customerState({ name: ' ', kana: '', phone: '' }))
+    expect(errors.name).toBe('お名前を入力してください')
+    expect(errors.kana).toBe('フリガナを入力してください')
+    expect(errors.phone).toBe('電話番号を入力してください')
+  })
+
+  it('氏名・フリガナの100文字超と電話番号の20文字超を検出する', () => {
+    const errors = validateBookingCustomer(
+      customerState({ name: 'あ'.repeat(101), kana: 'ア'.repeat(101), phone: '0'.repeat(21) }),
+    )
+    expect(errors.name).toBe('お名前は100文字以内で入力してください')
+    expect(errors.kana).toBe('フリガナは100文字以内で入力してください')
+    expect(errors.phone).toBe('電話番号は20文字以内で入力してください')
+  })
+
+  it('新規ご来店がオンのとき未来の生年月日を弾く', () => {
+    const today = new Date(2026, 7, 10)
+    const errors = validateBookingCustomer(
+      customerState({ isFirstVisit: true, birthday: new Date(2026, 7, 11) }),
+      today,
+    )
+    expect(errors.birthday).toBe('生年月日は今日以前の日付を入力してください')
+  })
+
+  it('新規ご来店がオンでも今日の生年月日は許容する', () => {
+    const today = new Date(2026, 7, 10)
+    const errors = validateBookingCustomer(
+      customerState({ isFirstVisit: true, birthday: new Date(2026, 7, 10) }),
+      today,
+    )
+    expect(errors.birthday).toBe('')
+  })
+
+  it('新規ご来店がオンのときメールアドレスの形式を検証する', () => {
+    const invalid = validateBookingCustomer(
+      customerState({ isFirstVisit: true, email: 'not-an-email' }),
+    )
+    const valid = validateBookingCustomer(
+      customerState({ isFirstVisit: true, email: 'hanako@example.com' }),
+    )
+    expect(invalid.email).toBe('メールアドレスの形式が正しくありません')
+    expect(valid.email).toBe('')
+  })
+
+  it('新規ご来店がオフなら追加項目を検証しない', () => {
+    const errors = validateBookingCustomer(
+      customerState({ isFirstVisit: false, email: 'not-an-email', birthday: new Date(2099, 0, 1) }),
+    )
+    expect(errors.email).toBe('')
+    expect(errors.birthday).toBe('')
+  })
+
+  it('ご要望の文字数上限を検証する', () => {
+    const errors = validateBookingCustomer(
+      customerState({ note: 'あ'.repeat(BOOKING_NOTE_MAX_LENGTH + 1) }),
+    )
+    expect(errors.note).toBe('ご要望は500文字以内で入力してください')
+  })
+})
+
+describe('hasBookingCustomerError', () => {
+  it('全て空文字なら false', () => {
+    expect(hasBookingCustomerError(emptyBookingCustomerErrors())).toBe(false)
+  })
+
+  it('1つでもメッセージがあれば true', () => {
+    expect(hasBookingCustomerError({ ...emptyBookingCustomerErrors(), gender: 'エラー' })).toBe(
+      true,
     )
   })
 })

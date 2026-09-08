@@ -1,4 +1,4 @@
-import type { BusinessHour } from '@/types'
+import type { BusinessHour, Gender } from '@/types'
 import { formatDate, formatTime, toIsoWithOffset, weekdayLabel } from './format'
 import { hhmmToMinutes } from './reservationCalendar'
 
@@ -72,4 +72,82 @@ export function buildCancelUrl(origin: string, bookingToken: string): string {
 /** Web予約ページの完全URL（SPA と API は別オリジンのため、フロントエンドの origin から組み立てる） */
 export function buildBookingPageUrl(origin: string, bookingSlug: string): string {
   return `${origin}/booking/${bookingSlug}`
+}
+
+/** ご要望（reservations.note）の文字数上限。公開APIの max:500 と対応する */
+export const BOOKING_NOTE_MAX_LENGTH = 500
+
+/** 公開予約ページ ステップ4 のフォーム状態 */
+export interface BookingCustomerFormState {
+  name: string
+  kana: string
+  phone: string
+  isFirstVisit: boolean
+  birthday: Date | null
+  gender: Gender | null
+  email: string
+  note: string
+}
+
+/** フィールド単位のエラーメッセージ（空文字＝エラーなし）。キーはサーバの422エラーキーと揃える */
+export type BookingCustomerErrors = Record<
+  'name' | 'kana' | 'phone' | 'birthday' | 'gender' | 'email' | 'note',
+  string
+>
+
+export function emptyBookingCustomerErrors(): BookingCustomerErrors {
+  return { name: '', kana: '', phone: '', birthday: '', gender: '', email: '', note: '' }
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** 追加項目は「新規ご来店」がオンのときだけ検証する（オフならサーバも受け取らない） */
+export function validateBookingCustomer(
+  state: BookingCustomerFormState,
+  today: Date = new Date(),
+): BookingCustomerErrors {
+  const errors = emptyBookingCustomerErrors()
+
+  errors.name =
+    state.name.trim() === ''
+      ? 'お名前を入力してください'
+      : state.name.length > 100
+        ? 'お名前は100文字以内で入力してください'
+        : ''
+  errors.kana =
+    state.kana.trim() === ''
+      ? 'フリガナを入力してください'
+      : state.kana.length > 100
+        ? 'フリガナは100文字以内で入力してください'
+        : ''
+  errors.phone =
+    state.phone.trim() === ''
+      ? '電話番号を入力してください'
+      : state.phone.length > 20
+        ? '電話番号は20文字以内で入力してください'
+        : ''
+
+  if (state.isFirstVisit) {
+    const endOfToday = new Date(today)
+    endOfToday.setHours(23, 59, 59, 999)
+    errors.birthday =
+      state.birthday !== null && state.birthday.getTime() > endOfToday.getTime()
+        ? '生年月日は今日以前の日付を入力してください'
+        : ''
+    errors.email =
+      state.email.trim() !== '' && !EMAIL_PATTERN.test(state.email.trim())
+        ? 'メールアドレスの形式が正しくありません'
+        : ''
+  }
+
+  errors.note =
+    state.note.length > BOOKING_NOTE_MAX_LENGTH
+      ? `ご要望は${BOOKING_NOTE_MAX_LENGTH}文字以内で入力してください`
+      : ''
+
+  return errors
+}
+
+export function hasBookingCustomerError(errors: BookingCustomerErrors): boolean {
+  return Object.values(errors).some((message) => message !== '')
 }

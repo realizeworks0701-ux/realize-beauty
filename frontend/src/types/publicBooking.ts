@@ -1,4 +1,5 @@
 import type { BusinessHour } from './businessHour'
+import type { Gender } from './customer'
 import type { ReservationStatus } from './reservation'
 
 /** 公開予約ページ用メニュー（有効メニューのみ・display_order 昇順） */
@@ -43,6 +44,12 @@ export interface PublicReservationRequest {
   name: string
   kana: string
   phone: string
+  /** 「新規ご来店」チェック。true のときのみサーバが birthday / gender / email を受理する */
+  is_first_visit: boolean
+  birthday?: string | null
+  gender?: Gender | null
+  email?: string | null
+  note?: string | null
 }
 
 /** 予約完了画面に表示する LINE 連携案内（友だち追加 + ワンタイム連携コード） */
