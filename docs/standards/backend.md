@@ -28,6 +28,10 @@ Serviceはビジネスロジックのみ。
 
 ValidationはFormRequestで行う。
 
+エラーメッセージは `backend/lang/ja/validation.php` で日本語化している（ADR-030）。
+FormRequestごとに `messages()` は書かず、項目名は同ファイル末尾の `attributes` に集約する。
+**FormRequestに項目を追加したら `attributes` にも日本語名を1行追加する。**
+
 Resourceでレスポンスを返す。
 
 Fat Controllerは禁止。
