@@ -121,6 +121,16 @@ Laravel Breeze の既定はこの形だが、上記のとおり本番ではIPが
 
 ---
 
+## Note: `DB_SSLMODE=require` の有効化（2026-09-07 追記）
+
+**上記「デメリット・注意点」と「Alternatives Considered」に書いた `DB_SSLMODE=require` 未適用の記述は、
+その後の状態には当てはまらない。** 2026-09-07 にダッシュボードの実設定を `render.yaml` と突き合わせた
+ところ、本番の `DB_SSLMODE` は既に `require` になっていることを確認した。`render.yaml` にも
+コメントアウトではなく通常の env として明示している。疎通確認の手順とロールバック手順は
+docs/runbook-hardening.md 手順1に残してある。
+
+---
+
 ## References
 
 - docs/runbook-hardening.md（手動作業手順）

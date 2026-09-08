@@ -129,8 +129,10 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 ## STEP 1. Neon（develop の DB）
 
 1. [neon.tech](https://neon.tech) でアカウントを作る。
-2. プロジェクトを **AWS Singapore (`ap-southeast-1`)** に作成。
-   - Render に日本リージョンがないため、Tokyo に置くとアプリ⇔DB が約70ms 離れる。Laravel は1リクエストで多数のクエリを投げるので、Singapore に揃える方が体感が速い。
+2. プロジェクトを **AWS Singapore (`ap-southeast-1`)** に作成する。develop の Render Web サービス
+   （`render.yaml` で `region: singapore`）に合わせるため。Render に日本リージョンがなく、
+   Tokyo に置くとアプリ⇔DB が約70ms 離れる。Laravel は1リクエストで多数のクエリを投げるので、
+   アプリと同じリージョンに寄せる方が体感が速い（本番の DB とは別物なので、本番のリージョンとは揃えない）。
 3. データベース名は `realize_beauty_develop` にする。
 4. 接続文字列をコピーする。**プーラー経由（ホスト名に `-pooler` が入るもの）ではなく、直接エンドポイントを使う。** `config/database.php` の pgsql 接続が `search_path` を持ち、接続ごとにセッションへ設定するため。
 
@@ -165,6 +167,16 @@ STEP 0 の修正を push したあと、**Manual Sync を手動で実行**して
 4. API キー（`sk_test_...` / `pk_test_...`）を控える。
 5. Webhook エンドポイントは **STEP 8**（develop API の URL が確定してから）。
 
+### 参考: 本番の Stripe はまだ未設定
+
+2026-09-07 の Generate Blueprint 突き合わせで判明した事実として記録する。`STRIPE_SECRET` /
+`STRIPE_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_PRICE_LITE` / `STRIPE_PRICE_STANDARD` /
+`STRIPE_PRICE_PRO` は `badb307` で `render.yaml` に追加されたが、**Render は既存 Blueprint への
+同期で `sync: false` の変数の入力を求めない**（入力を促すのは Blueprint の初回作成時だけ）。
+そのため本番サービスの Environment にはこれらの値が一つも入っておらず、**本番の課金機能は
+誰かがダッシュボードから手入力するまで動かない。** develop の Stripe（この STEP 3）はそれとは
+無関係に、sandbox として別途セットアップする値であり、本番側の未設定を埋めるものではない。
+
 ### STEP 3.5. OpenAI
 
 develop 用に**別の API キー**を発行する（本番キーと使用量を混ぜないため）。AI 要約はリクエスト内で同期的に呼ばれ、クリックのたびに課金される。予算上限を低く設定しておくとよい。
@@ -191,11 +203,13 @@ cd backend && php artisan key:generate --show
 > `develop` にマージしただけでは `realize-beauty-api-dev` は作られない。Blueprint の Settings でどのブランチを
 > 追跡しているかを確認し、そのブランチへマージしてから Manual Sync すること。
 
-> **リージョンを本番と揃える。** `render.yaml` に `region` は書いていない（本番の現在のリージョンが
-> ここからは確認できず、かつ**リージョンは作成後に変更できない**ため、書き違えると作り直しになる）。
-> ダッシュボードで `realize-beauty-api` のリージョンを確認し、develop サービスも**同じリージョン**で作ること。
-> STEP 1 の Neon プロジェクトのリージョン（AWS Singapore を選ぶ前提で書いてある）も、これに合わせる。
-> 揃っていないと DB との往復が1リクエストごとに効いてくる。
+> **リージョンは `render.yaml` に明示済みで、本番と揃えるのが目的ではない。** 本番の Web は
+> `region: oregon`、develop の Web は `region: singapore` と書いてあり、これは意図的な違いである。
+> develop は日本の見込み客に見せるデモで、Oregon だと太平洋を往復する分だけ体感が明確に遅くなるため
+> Singapore を選んだ。**リージョンは作成後に変更できない**ので、Manual Sync で develop サービスが
+> 作られたあとに気づいても直せない —— push する前に `render.yaml` の `region` を確認すること。
+> STEP 1 の Neon プロジェクトは develop の Web と同じ **AWS Singapore** に作る（こちらは本番と
+> 揃える理由が無いのではなく、そもそも本番用の DB ではないので比較対象にならない）。
 
 1. Blueprint ページで **Manual Sync** を実行する。`realize-beauty-api-dev` が作成される。
 2. **初回デプロイは失敗する。** 環境変数が空でコンテナが起動できないため。想定内なのでそのまま進む。

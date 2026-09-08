@@ -30,11 +30,17 @@ Project を作っていないため、サービスは **Project ではなく `Un
 
 ---
 
-## 1. 【push 前に必須】DB の TLS 疎通確認
+## 1. DB の TLS（`DB_SSLMODE=require`）— 適用済み
 
-`render.yaml` の `DB_SSLMODE` は**コメントアウトした状態で push している**。未検証のまま反映すると、
+**本番の `DB_SSLMODE` は `require` になっている。** 2026-09-07 にダッシュボードの実設定を
+`render.yaml` と突き合わせて確認した（このファイルには長らく「コメントアウトした状態で push している」
+という古い記述が残っていたが、実際にはその後有効化されていた）。`render.yaml` にも
+`DB_SSLMODE: require` を明示している（コメントアウトの2行ではなく通常の env として）。
+
+以下は、有効化する前に行った疎通確認の手順の記録。**未検証のまま有効化すると**、
 Render の PostgreSQL が TLS を受けない場合に `entrypoint.sh` の `set -e` と `migrate --force` で
-コンテナが起動できず全断するため。疎通確認してから有効化する。
+コンテナが起動できず全断する（今後 `DB_SSLMODE` を変更する機会があれば、同じ手順で確認してから
+反映すること）。
 
 ローカルの postgres（TLS 無効）で失敗モードを再現済み:
 
@@ -69,7 +75,7 @@ External URL 経由（＝外部接続の確認にしかならない）より確�
 
 3. **成功したら** 有効化する。どちらでもよい:
    - Ungrouped Services → `realize-beauty-api` → Environment に `DB_SSLMODE=require` を追加（即再デプロイ）
-   - または `render.yaml` の該当2行のコメントを外して push
+   - または `render.yaml` に `DB_SSLMODE: require` を追加して push（本番は現にこの形で明示されている）
 4. **失敗したら** 有効化しない。DB 接続は平文の可能性が残るため、Render のサポート/ドキュメントで
    内部接続の TLS 可否を確認する
 5. 有効化後、再デプロイが終わったら Shell で**実際に暗号化されているか**を確認する
@@ -268,11 +274,17 @@ done
 
 ## 6. 積み残し（このデプロイには含まれない）
 
-- **キューとスケジューラが本番で動いていない**。`queue:work` も `schedule:run` も無いため、
-  LINE返信・予約確定通知・カレンダー同期のジョブが `jobs` テーブルに溜まり続けている。
-  有料プランなので `render.yaml` に `type: worker`（`queue:work`）と `type: cron`（`schedule:run`）を
-  追加する正攻法が取れる。サービスが増えるぶん課金対象も増えるため、追加費用ゼロで済ませるなら
-  `QUEUE_CONNECTION=sync`（リクエスト内で同期実行）。方針は別途決定する。
+- **本番のキューは長らく `sync` だった。いまは `deferred`。** `sync` は `PublicBookingService` が
+  `DB::transaction` の内側で dispatch する LINE 送信ジョブの例外を呼び出し元へ投げ返し、予約行は
+  コミット済みのまま予約 API が 500 を返すバグを引き起こしていた（`SendBookingConfirmationJob` の
+  再スロー、`LineClient` のタイムアウト変換、`SyncQueue::handleException` の `throw $e` が連なって
+  起きる。[ADR-031](decisions/ADR-031-two-environment-deployment.md) 参照）。ADR-031 で
+  `QUEUE_CONNECTION=deferred` に変更し、このバグは解消した。ただし `queue:work` も `schedule:run` も
+  存在しないままで、`deferred` はレスポンス送出後に同一プロセスで実行する暫定にすぎない。
+  実行専用のワーカー（`type: worker`）と、予約リマインダー・Google カレンダー watch チャネルの
+  張り直し・同期窓の日次前進を回す cron（`type: cron`）は依然として無い。有料プランなので
+  `render.yaml` に両方を追加する正攻法が取れるが、サービスが増えるぶん課金対象も増えるため、
+  方針は別途決定する。
 - **期限切れトークンが `personal_access_tokens` に残る**。`sanctum:prune-expired` を回す手段が
   スケジューラ未稼働のため無い。無効なので害は無いが、上記のキュー方針とセットで検討する。
 - **認可（役割ベースのアクセス制御）が未実装**。認証済みユーザーは role に関わらず全顧客・カルテ・写真を

@@ -44,11 +44,16 @@ MVP 段階の運用体制（個人開発・追加課金なし）では1つに載
   `app()->environment('production')` の二値判定で、production では `sk_test_` で始まる秘密鍵を、
   production 以外では `sk_live_` で始まる秘密鍵を拒否する（未設定はどちらでも拒否）。
   develop をテストモードにする手段は `APP_ENV` を production 以外にすることしかない。
-- **キューワーカーがどの環境にも存在しない。** 既定の `database` ドライバではジョブが `jobs` テーブルに
-  溜まったまま実行されない。かといって `sync` にすると、`PublicBookingService` が `DB::transaction` の
-  内側で dispatch している LINE 送信ジョブが**コミット後のコールバックの中で同期実行される**。
-  `afterCommit()` を付けていても `sync` ドライバはジョブの例外を呼び出し元へ投げ返すため、
-  **予約行はコミットされたまま HTTP 500 が返る**。見込み客は「予約が失敗した」と判断して再送信する。
+- **キューワーカーがどの環境にも存在せず、本番の `QUEUE_CONNECTION` は長らく `sync` だった。**
+  2026-09-07 にダッシュボードの実設定と `render.yaml` を突き合わせて判明した（それまでは
+  `database` だと認識していたが誤りだった）。`sync` はジョブを呼び出し元と同一プロセスで即時実行する。
+  `PublicBookingService` は `DB::transaction` の内側で LINE 送信ジョブを `afterCommit()` 付きで
+  dispatch しており（`PublicBookingService.php:135, 140`）、`sync` ドライバはジョブの例外を呼び出し元へ
+  投げ返す（`SyncQueue::handleException` は `throw $e`）。`SendBookingConfirmationJob` は
+  `LineApiException` を再スローし（`:71`）、`LineClient` はネットワークのタイムアウトすら
+  `LineApiException` に変換する（`:79-80`）。結果、**予約行はコミットされたまま HTTP 500 が返り**、
+  見込み客は「予約が失敗した」と判断して再送信していた。レート制限の分岐だけは `$this->fail($e)` が
+  例外を再スローしないため無事だった。develop を新設するにあたり、この構成をそのまま複製するわけにはいかない。
 - **シーダーのデモデータは数日で腐る。** 予約日時を投入時点の `today()` で固定するため、
   「本日の予約」が空になりダッシュボードが死んで見える。再実行しても各レコードは `firstOrCreate` で、
   古い行は消えずに積み上がる。さらに Stripe デモは1人目でしか成立しない
@@ -70,11 +75,12 @@ develop は DB・オブジェクトストレージ・Stripe・LINE・Google・Op
 |---|---|---|
 | ブランチ | `main` | `develop` |
 | Render Web | `realize-beauty-api`（有料・現状維持） | `realize-beauty-api-dev`（free） |
+| リージョン | `oregon` | `singapore`（意図的に本番と揃えない。Decision 3 参照） |
 | DB | Render Managed PostgreSQL（現状維持） | Neon 無料プラン（AWS Singapore）を `DB_URL` で |
 | `APP_ENV` | `production` | `staging` |
 | `APP_KEY` | 既存 | **別の値** |
 | Stripe | Live Mode | Test Mode（named sandbox） |
-| `QUEUE_CONNECTION` | 現状維持（別課題） | `deferred` |
+| `QUEUE_CONNECTION` | `deferred`（従来は `sync`。Decision 5 参照） | `deferred` |
 | R2 | 既存バケット | **専用バケット + 専用トークン** |
 | LINE / Google / OpenAI | 本番の資格情報 | **専用の資格情報** |
 | フロント | Worker `realize-beauty` | Worker `realize-beauty-develop` |
@@ -114,7 +120,12 @@ develop は DB・オブジェクトストレージ・Stripe・LINE・Google・Op
 **最も安全網の薄い操作が日常操作になる**。この穴は後述の `demo:reset` が接続先の実体を
 検査することで塞ぐ。
 
-### 3. develop の DB は Neon の無料プラン
+### 3. develop の Render Web は `singapore`、DB は Neon の無料プラン（同じく Singapore）
+
+**develop の Render Web サービスは本番の `oregon` とは意図的に揃えず、`singapore` に置く。**
+develop は日本の見込み客に見せるデモであり、Oregon だと太平洋を往復する分だけ体感が明確に遅くなる。
+リージョンは作成後に変更できないため、作る前に決める必要がある（本番が `oregon` なのは、
+本 ADR より前から実際に稼働している場所がそこだったという既成事実で、選び直す対象ではない）。
 
 Render の無料 PostgreSQL は1ワークスペースに1つしか置けず、かつ**作成から30日で失効する**
 （猶予14日ののち削除）。デモ環境が月次で消えるのは運用として成立しない。
@@ -123,8 +134,9 @@ Neon の無料プランは 0.5GB ストレージ / 100 CU 時間・月で**期�
 コンピュートが停止するが、次の接続で自動復帰する（数百ms）。この自動復帰が採用理由で、
 手動で解除するまで止まったままになる無料 DB では、週明けの初回デプロイが必ず失敗する。
 
-- リージョンは **AWS Singapore**。Render に日本リージョンがなく、Tokyo に置くとアプリ⇔DB が
-  約70ms 離れる。Laravel は1リクエストで多数のクエリを投げるため、同じ側に寄せる。
+- Neon のプロジェクトも **AWS Singapore** に作る。develop の Render Web を Singapore にした以上、
+  DB を別リージョンに置くとアプリ⇔DB間の往復が新たに発生する。Laravel は1リクエストで
+  多数のクエリを投げるため、アプリと DB を同じリージョンに寄せる。
 - 接続は**直接エンドポイント**（ホスト名に `-pooler` を含まないもの）を使う。
   `config/database.php` の pgsql 接続が `search_path` を持ち、接続ごとにセッションへ
   設定するため（プーラーはセッション状態を前提にできない）。
@@ -153,12 +165,19 @@ R2 は**バケット単位の課金がない**（料金は保存量とオペレ�
 
 同じ費用でコード変更ゼロの分離が取れるので、そちらを採る。
 
-### 5. develop の `QUEUE_CONNECTION` は `deferred`
+### 5. `QUEUE_CONNECTION` は本番・develop とも `deferred` にする
 
-`sync` は使えない（Context のとおり、LINE 障害が予約 API の 500 になる）。`deferred` は
-`config/queue.php` に定義済みで、レスポンス送出後に同一プロセスで実行される。コード変更なしで採用できる。
+Context のとおり、本番は長らく `sync` で、LINE 送信の失敗（タイムアウト含む）が
+`SendBookingConfirmationJob` の再スロー→`SyncQueue::handleException` の `throw $e` を経て
+予約 API の 500 になっていた。develop を新設するにあたってこの構成を複製する理由はなく、
+`sync` は develop でも同じバグを踏むため使えない。既定の `database` もキューワーカーが
+どちらの環境にも存在しない以上、ジョブが `jobs` テーブルに溜まったまま実行されないため採用しない。
 
-**本番側は変更しない。** キューワーカーの不在は本 ADR より前からの課題で、別途扱う。
+`deferred` は `config/queue.php` に定義済みで、レスポンス送出後に同一プロセスで実行される。
+送信に失敗してもログに落ちるだけで、コミット済みの予約行にもレスポンスにも影響しない。
+コード変更なしで両環境に採用できるため、**本番の `QUEUE_CONNECTION` も本 ADR で `sync` から
+`deferred` へ変更した。** ワーカーを立てるまでの暫定であり、根本解決は `type: worker` の追加
+（Consequences・[runbook-hardening.md](../runbook-hardening.md) §6）。
 
 ### 6. 外部サービスの資格情報はすべて別にする
 
@@ -176,15 +195,27 @@ R2 は**バケット単位の課金がない**（料金は保存量とオペレ�
 - **`CORS_ALLOWED_ORIGINS` / `FRONTEND_URL`**: 互いの URL を相手側に足さない。
   `FRONTEND_URL` を本番で誤ると、実顧客の予約リンクや Stripe の戻り先がデモ環境に飛ぶ。
 
-### 7. `render.yaml` に既存リソースの `plan` を書かない
+### 7. `render.yaml` は既存リソースの実プラン・実リージョンを確認したうえで明示する
 
-Blueprint 仕様は、既存リソースで `plan` を省略した場合に**現行プランを保持する**と明記している。
-実プラン ID を書き写すより、書かないほうが安全である —— ダッシュボードで昇格したときに
-ファイルの追随を忘れても、降格指示にならない。
+当初は「`plan` を書かない」方針だった。Blueprint 仕様が、既存リソースで `plan` を省略した場合に
+**現行プランを保持する**と明記しているため、実プラン ID を書き写すより書かないほうが安全だと
+判断していた。
 
-- 既存の Web サービスと PostgreSQL からは `plan` を削除した。
-- 新規リソース（`realize-beauty-api-dev`）には `plan: free` を**明示する**。
-  新規で省略すると既定の `0.5c-512mb`（有料）になる。
+しかし 2026-09-07 にダッシュボードの Generate Blueprint で実設定と突き合わせたところ、
+`plan` 以外にも `region` / `diskSizeGB` / `postgresMajorVersion` / `ipAllowList` がこのファイルに
+書かれておらず、暗黙のまま実態と一致しているかを確認する手段が無かった。**実態を一度確定させて
+明示するほうが、次に `render.yaml` を変更する人が差分として読める。** 以後 `render.yaml` を
+変更するときは、必ず先に Generate Blueprint で突き合わせてから値を書く運用にした
+（[runbook-develop-env.md](../runbook-develop-env.md) STEP 0）。
+
+- 本番 Web は `plan: 0.5c-512mb` / `region: oregon`。
+- 本番 DB は `plan: 0.1c-256mb` / `region: oregon` / `diskSizeGB: 1` / `postgresMajorVersion: "18"`。
+  `region` は作成後に変更できず、`diskSizeGB` は縮小できない一方向の値のため、実態と揃えておく。
+- 本番 DB の `ipAllowList` は `0.0.0.0/0`（everywhere）。無料プラン時代からの運用
+  ——Shell の無い環境で運用コマンドをローカルから `DB_URL` 越しに叩く——に必要ではあるが、
+  範囲は最大である。固定 IP を用意できたら絞る。
+- 新規リソース（`realize-beauty-api-dev`）には `plan: free` / `region: singapore` を**明示する**。
+  新規で `plan` を省略すると既定の `0.5c-512mb`（有料）になる。
 - 既存の本番サービスに `branch: main` を明示した。Blueprint 仕様上、`branch` の省略は
   リポジトリの既定ブランチを指す。ブランチに束縛された兄弟サービスが増える状況で
   暗黙のままにしない。
@@ -310,10 +341,14 @@ Decision 4 に記載。同じ費用でバケットを分けられるため、fai
 - デモが壊れても本番に影響しない。`demo:reset` でいつでも初期状態に戻せる。
 - 未リリースのコードを、ローカルではない環境（Docker・Render・実際の外部連携）で確かめてから
   `main` へ出せるようになった。
-- `render.yaml` から `plan` を落としたことで、Blueprint 同期が本番を降格させる経路が消えた。
+- `render.yaml` に実プラン・実リージョンを確認したうえで明示したことで、Blueprint 同期が
+  本番を降格させる経路が消えた（値が実態と一致しているため、同期しても現状のまま）。
 - `livemode` 検査と `demo:reset` の接続先検査により、**環境の取り違えが静かに成立しない**。
   従来は `whsec_` の貼り間違いも `DB_URL` の向け違えも、エラーを出さずに通っていた。
 - Stripe の設定不備が日本語で表示されるようになり、初回セットアップの誤りを画面から切り分けられる。
+- **本番の `QUEUE_CONNECTION` も `sync` から `deferred` に是正した。** LINE 送信の失敗が予約行の
+  コミット後に予約 API を 500 にしていたバグが解消し、キューの挙動が develop と揃った。
+  develop で通ったことは、この経路に関しては本番の参考にできる。
 
 ### デメリット・注意点
 
@@ -333,10 +368,10 @@ Decision 4 に記載。同じ費用でバケットを分けられるため、fai
   デモデータを書き換えられる。そのつもりで扱う。
 - 環境変数の変更は**再デプロイしないと反映されない**（`entrypoint.sh` が起動時に `config:cache` を
   実行するため）。ダッシュボードで値を入れただけでは動かない。
-- **キューの挙動が本番と違う。** develop は `QUEUE_CONNECTION=deferred` で LINE 通知と Google カレンダー
-  連携のジョブが実際に走るが、本番は `database` のままワーカーが居ないため同じジョブは積まれるだけで
-  実行されない。この一点だけ **develop のほうが本番より機能する**ので、develop で通ったことを本番の
-  動作確認の代わりにはできない（本番のキューワーカーは下記のとおり未対応）。
+- **残っているのはスケジューラの不在。** `type: cron`（`schedule:run`）がどちらの環境にも無いため、
+  `routes/console.php` に登録された3コマンド（予約リマインダー・Google カレンダー watch チャネルの
+  張り直し・同期窓の日次前進）は develop でも本番でも一度も動いていない。これはキューとは別の
+  課題で、下記のとおり本 ADR の範囲外にする。
 - develop で使う外部サービスのアカウント・キーが増えた分、棚卸しの対象も増えた。
   何をどこに登録したかは [runbook-develop-env.md](../runbook-develop-env.md) の表で追う。
 
@@ -344,12 +379,18 @@ Decision 4 に記載。同じ費用でバケットを分けられるため、fai
 
 いずれも既存の課題として認識したうえで、意図的に本 ADR の範囲外に置く。
 
-- **本番のキューワーカーと cron。** `type: worker`（`queue:work`）と `type: cron`（`schedule:run`）は
-  どの環境にも存在せず、`routes/console.php` に登録された3コマンドは一度も動いていない。
-  本 ADR は develop に `deferred` を置いて回避するだけで、本番側は変更しない
-  （[runbook-hardening.md](../runbook-hardening.md) §6）。
-- **本番の `DB_SSLMODE=require` の有効化。** 未検証のまま有効化すると起動不能になるため、
-  疎通確認の手順を踏んでから別途行う（[runbook-hardening.md](../runbook-hardening.md) §1）。
+- **本番・develop 共通のキューワーカーと cron。** `type: worker`（`queue:work`）と `type: cron`
+  （`schedule:run`）はどちらの環境にも存在しない。本 ADR で両環境とも `QUEUE_CONNECTION=deferred`
+  にしたことで、ジョブはレスポンス送出後に同一プロセスで実行されるようになった —— もう
+  「本番はジョブが溜まったまま実行されない」状態ではないが、リクエストと同じプロセスで実行する
+  暫定であることに変わりはなく、実行に時間がかかるジョブはレスポンスを遅らせる。実行専用の
+  ワーカーはなお必要（[runbook-hardening.md](../runbook-hardening.md) §6）。`routes/console.php` の
+  3コマンド（予約リマインダー・Google カレンダー watch チャネルの張り直し・同期窓の日次前進）を
+  動かす cron も、引き続きどちらの環境にも無い。
+- **本番の `DB_SSLMODE=require` は、本 ADR の時点で既にダッシュボード側で有効化されていたことが
+  2026-09-07 の Generate Blueprint 突き合わせで判明した**（このファイルには長らくコメントアウトの
+  ままの記載が残っていた。ADR-028 参照）。以後は `render.yaml` にも明示している（Decision 7）ため
+  本 ADR の範囲外の課題ではなくなった。
 - **本番の `autoDeployTrigger` を `checksPass` にするか。** CI が通ってからデプロイするほうが安全だが、
   起動時マイグレーションと組み合わせた挙動を確かめてから判断する。本 ADR では `commit` のまま。
 - **`envVarGroups` による共通変数の集約**（Alternatives Considered 参照）。
