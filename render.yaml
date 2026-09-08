@@ -187,6 +187,9 @@ services:
     # region は作成後に変更できないので、作る前に確認すること。
     region: singapore
     branch: develop
+    # develop への push でコードが自動デプロイされる。新規サービスの既定値と同じだが、
+    # 本番側と揃えて明示する（Blueprint 同期とは別の仕組みである点に注意）。
+    autoDeployTrigger: commit
     healthCheckPath: /up
     envVars:
       - key: APP_NAME
